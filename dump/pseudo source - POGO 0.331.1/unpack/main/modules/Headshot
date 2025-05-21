@@ -1,0 +1,82 @@
+import PogoUtils_1 from "../utils/PogoUtils";
+import { oneLine } from "../utils/Toast";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const PersistentPrefs_1 = __importDefault(require("../utils/PersistentPrefs"));
+const UnityUtils_1 = __importDefault(require("../utils/UnityUtils"));
+class Headshot extends ModuleBase_1.default {
+  constructor() {
+    super();
+    this.ultrakill = false;
+  }
+  init() {
+    super.init();
+    const self = this;
+    const Pokeball = ditto_1.default.use("Niantic.Holoholo.Encounter.Pokeball");
+
+    Pokeball.Launch.attach({
+      onEnter() {
+        if (this._BallType_k__BackingField != 4) {
+          this.pokemon.invulnerable = false;
+          this.effects.CreateVfx(6);
+          const ballTransform = this.get_Transform();
+          const reticleTransform = this.reticle.get_Transform();
+
+          const lerp = UnityUtils_1.default.Vector3.Lerp(
+            ballTransform.get_position(),
+            reticleTransform.get_position(),
+            0.9
+          );
+
+          const newBallPosition = UnityUtils_1.default.Vector3.$new(
+            lerp.x,
+            lerp.y,
+            lerp.z
+          );
+
+          ballTransform.set_position(newBallPosition);
+        }
+      },
+    });
+
+    Pokeball.OnCollisionEnter.replace(function (collision) {
+      if (this.reticle) {
+        if (collision.$has("m_Collider")) {
+          collision.m_Collider = this.reticle.outerCollider.base;
+          collision.m_Body = this.reticle.bullseyeRing;
+        } else {
+          let _this$pokemon;
+          const pkmnTransform =
+            null == (_this$pokemon = this.pokemon) ||
+            _this$pokemon.get_Transform();
+          if (pkmnTransform) {
+            const contactPair = ditto_1.default
+              .use("UnityEngine.ContactPair")
+              .$new();
+            contactPair.m_OtherColliderID =
+              pkmnTransform.base.base.GetInstanceID();
+            collision.m_Pair = contactPair;
+          }
+        }
+      }
+
+      if (self.ultrakill || Math.random() < 0.05) {
+        this.pokemon.character.PlayAnimation(4, 0.5, -1);
+      }
+
+      this.OnCollisionEnter(collision);
+    });
+
+    self.ultrakill = PersistentPrefs_1.default.get("ULTRAKILL", false);
+
+    PogoUtils_1.PogoUtils.addCheatCode("ULTRAKILL", () => {
+      self.ultrakill = !self.ultrakill;
+      PersistentPrefs_1.default.set("ULTRAKILL", true);
+
+      oneLine(`ULTRAKILL${self.ultrakill ? "!" : " disabled."}`);
+    });
+  }
+}
+export default Headshot;

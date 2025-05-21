@@ -1,0 +1,41 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const ObjectInstance_1 = __importDefault(require("../utils/ObjectInstance"));
+class InstantSpin extends ModuleBase_1.default {
+  constructor() {
+    super();
+    this.psgicInstance = null;
+  }
+  init() {
+    super.init();
+
+    this.psgicInstance = new ObjectInstance_1.default(
+      "Niantic.Holoholo.Pokestop.PokestopSpinnerInteractionGuiController",
+      "Initialize",
+      false
+    );
+
+    const PoiItemSpinner = ditto_1.default.use(
+      "Niantic.Holoholo.Map.PoiItemSpinner"
+    );
+    PoiItemSpinner.Initialize.replace(function (newMapPoi) {
+      this.Initialize(newMapPoi);
+      this.SendSearchRpc();
+      this.Cleanup();
+    });
+    const self = this;
+
+    const PokestopInteractionState = ditto_1.default.use(
+      "Niantic.Holoholo.Pokestop.PokestopInteractionState"
+    );
+
+    PokestopInteractionState.EnterState.attach({
+      onLeave() {
+        self.psgicInstance.value.ClickExit();
+      },
+    });
+  }
+}
+export default InstantSpin;

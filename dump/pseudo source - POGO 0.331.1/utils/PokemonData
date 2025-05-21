@@ -1,0 +1,138 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const I18n_1 = __importDefault(require("./I18n"));
+class PokemonData {
+  constructor(
+    pokemonProto,
+    _encounterId = "",
+    _spawnPointId = "",
+    location = { Latitude: 0, Longitude: 0 },
+    encounterType = ""
+  ) {
+    let _pokemonProto$pokemon;
+    this.pokemonId = undefined;
+    this.name = undefined;
+    this.cp = undefined;
+    this.attack = undefined;
+    this.defense = undefined;
+    this.hp = undefined;
+    this.level = undefined;
+    this.weight = undefined;
+    this.weightStdDev = undefined;
+    this.height = undefined;
+    this.heightStdDev = undefined;
+    this.shiny = undefined;
+    this.encounterId = undefined;
+    this.spawnPointId = undefined;
+    this.latitude = undefined;
+    this.longitude = undefined;
+    this.iv = undefined;
+    this.ivString = undefined;
+    this.gender = undefined;
+    this.type = undefined;
+    this.form = undefined;
+    this.costume = undefined;
+    this.fastMove = undefined;
+    this.chargeMove = undefined;
+    this.size = undefined;
+    this.pokemonId = pokemonProto.pokemonId_;
+    this.name = I18n_1.default.unity.getPokemonNameFromId(this.pokemonId);
+    this.cp = pokemonProto.cp_;
+    this.attack = pokemonProto.individualAttack_;
+    this.defense = pokemonProto.individualDefense_;
+    this.hp = pokemonProto.individualStamina_;
+    this._buildIvString();
+    this.level = getPokemonLevel(pokemonProto.cpMultiplier_);
+
+    this._assumeGender(
+      pokemonProto == null ||
+        null == (_pokemonProto$pokemon = pokemonProto.pokemonDisplay_) ||
+        _pokemonProto$pokemon.gender_
+    );
+
+    this._calculateSize(pokemonProto);
+    this.shiny =
+      !!pokemonProto.pokemonDisplay_ && pokemonProto.pokemonDisplay_.shiny_;
+    this.encounterId = _encounterId;
+    this.spawnPointId = _spawnPointId;
+    this.latitude = location.Latitude;
+    this.longitude = location.Longitude;
+    this.type = encounterType;
+
+    this.form = pokemonProto.pokemonDisplay_
+      ? pokemonProto.pokemonDisplay_.form_
+      : 0;
+
+    this.costume = pokemonProto.pokemonDisplay_
+      ? pokemonProto.pokemonDisplay_.originalCostume_
+      : 0;
+
+    this.fastMove = pokemonProto.move1_;
+    this.chargeMove = pokemonProto.move2_;
+    this.size = pokemonProto.size_;
+  }
+  _buildIvString() {
+    this.iv = Math.round(100 * ((this.attack + this.defense + this.hp) / 45));
+    this.ivString = `${this.iv}%`;
+  }
+  _assumeGender(genderIndex) {
+    const GENDERS = ["", "male", "female", "genderless"];
+    this.gender = GENDERS[genderIndex] ? GENDERS[genderIndex] : "";
+  }
+  _calculateSize(pokemonProto) {
+    const settingsProto = pokemonProto.get_settingsProto();
+    this.weight = pokemonProto.weightKg_;
+
+    const weightStdDev = settingsProto == null || settingsProto.weightStdDev_;
+
+    const weightAvg = settingsProto == null || settingsProto.pokedexWeightKg_;
+
+    this.height = pokemonProto.heightM_;
+
+    const heightStdDev = settingsProto == null || settingsProto.heightStdDev_;
+
+    const heightAvg = settingsProto == null || settingsProto.pokedexHeightM_;
+
+    if (
+      this.weight &&
+      weightStdDev &&
+      weightAvg &&
+      this.height &&
+      heightStdDev &&
+      heightAvg
+    ) {
+      this.weightStdDev = (this.weight - weightAvg) / weightStdDev;
+      this.heightStdDev = (this.height - heightAvg) / heightStdDev;
+    }
+  }
+}
+export default PokemonData;
+const CP_MULTIPLIERS = [
+  0.094, 0.1351374318, 0.16639787, 0.192650919, 0.21573247, 0.2365726613,
+  0.25572005, 0.2735303812, 0.29024988, 0.3060573775, 0.3210876, 0.3354450362,
+  0.34921268, 0.3624577511, 0.3752356, 0.387592416, 0.39956728, 0.4111935514,
+  0.4225, 0.4329264091, 0.44310755, 0.4530599591, 0.4627984, 0.472336093,
+  0.48168495, 0.4908558003, 0.49985844, 0.508701765, 0.51739395, 0.5259425113,
+  0.5343543, 0.5426357375, 0.5507927, 0.5588305862, 0.5667545, 0.5745691333,
+  0.5822789, 0.5898879072, 0.5974, 0.6048236651, 0.6121573, 0.6194041216,
+  0.6265671, 0.6336491432, 0.64065295, 0.6475809666, 0.65443563, 0.6612192524,
+  0.667934, 0.6745818959, 0.6811649, 0.6876849038, 0.69414365, 0.70054287,
+  0.7068842, 0.7131691091, 0.7193991, 0.7255756136, 0.7317, 0.7347410093,
+  0.7377695, 0.7407855938, 0.74378943, 0.7467812109, 0.74976104, 0.7527290867,
+  0.7556855, 0.7586303683, 0.76156384, 0.7644861, 0.76739717, 0.7702973,
+  0.7731865, 0.77606493, 0.77893275, 0.7817901, 0.784637, 0.78747356, 0.7903,
+  0.79280394, 0.7953, 0.79780394, 0.8003, 0.8028039, 0.8053, 0.80780387, 0.8103,
+  0.81280386, 0.8153, 0.8178038, 0.8203, 0.8228038, 0.8253, 0.82780373, 0.8303,
+  0.8328037, 0.8353, 0.8378038, 0.8403, 0.84279999, 0.8453,
+];
+function getPokemonLevel(pokemonCpMultiplier) {
+  let level = 1;
+
+  CP_MULTIPLIERS.some((cpMultiplier) => {
+    const delta = Math.abs(pokemonCpMultiplier - cpMultiplier);
+    return !!(delta >= lastDelta) || void ((level += 1), (lastDelta = delta));
+  });
+
+  return level / 2;
+}
+export { getPokemonLevel };

@@ -1,0 +1,785 @@
+import {
+  getNullableType,
+  getObjectType,
+  isPrimitive,
+  getPrimitiveArrayType,
+  getObjectArrayType,
+  getPrimitiveType,
+} from "./types";
+
+import { gte } from "./utils/version-utils";
+export const __esModule = true;
+const _api = _interopRequireWildcard(require("./il2cpp/api"));
+const _consts = _interopRequireDefault(require("./il2cpp/consts"));
+const _obfmap = _interopRequireDefault(require("./obfmap"));
+const _thread = _interopRequireDefault(require("./il2cpp/thread"));
+function _interopRequireDefault(obj) {
+  return obj && obj.__esModule ? obj : { default: obj };
+}
+function _getRequireWildcardCache(e) {
+  if (typeof WeakMap != "function") {
+    return null;
+  }
+  const r = new WeakMap();
+  const t = new WeakMap();
+  return (_getRequireWildcardCache = (e) => (e ? t : r))(e);
+}
+function _interopRequireWildcard(e, r) {
+  if (!r && e && e.__esModule) {
+    return e;
+  }
+  if (e === null || (typeof e != "object" && typeof e != "function")) {
+    return { default: e };
+  }
+  const t = _getRequireWildcardCache(r);
+  if (t && t.has(e)) {
+    return t.get(e);
+  }
+  const n = { __proto__: null };
+  const a = Object.defineProperty && Object.getOwnPropertyDescriptor;
+  for (const u in e) {
+    if (u != "default" && Object.prototype.hasOwnProperty.call(e, u)) {
+      const i = a ? Object.getOwnPropertyDescriptor(e, u) : null;
+
+      if (i && (i.get || i.set)) {
+        Object.defineProperty(n, u, i);
+      } else {
+        n[u] = e[u];
+      }
+    }
+  }
+  n.default = e;
+
+  if (t) {
+    t.set(e, n);
+  }
+
+  return n;
+}
+const Process_pointerSize = Process.pointerSize;
+const MAX_EXCEPTION_SIZE = 4096;
+class Core {
+  static unityVersion = null;
+  static globalDomain = null;
+  static nullableClass = null;
+  static dittoDebug = false;
+  static typeEnumMap = {
+    1: "void",
+    2: "bool",
+    3: "char",
+    4: "sbyte",
+    5: "byte",
+    6: "short",
+    7: "ushort",
+    8: "int",
+    9: "uint",
+    10: "long",
+    11: "ulong",
+    12: "float",
+    13: "double", //14: "string",
+    //15: "pointer",
+    17: "valuetype", //20: "array", This is a multi dimensional array aka not supported.
+    24: "intptr",
+    29: "array",
+  };
+  static get tracingMode() {
+    return Core == null || Core._tracingMode || false;
+  }
+  static set tracingMode(value) {
+    if (value === true) {
+      warn(
+        "Warning: enabling experimental .toString() verbosity. This improves readability but causes a performance impact."
+      );
+    }
+
+    Core._tracingMode = value;
+  }
+  static initialize() {
+    (0, _api.initIl2CppApi)();
+    this.globalDomain = _api.default.domain_get();
+    unsafe("Attaching to global domain...");
+    _thread.default.attachThread(this.globalDomain);
+
+    this.nullableClass = _api.default.class_from_name(
+      _api.default.get_corlib(),
+      Memory.allocUtf8String("System"),
+      Memory.allocUtf8String("Nullable`1")
+    );
+
+    unsafe(
+      `Getting runtime information: ${JSON.stringify(
+        this.getRuntimeInformation()
+      )}`
+    );
+  }
+  static perform(block) {
+    let thread = _thread.default.getCurrentThread();
+    const isForeignThread = thread == null;
+
+    if (isForeignThread) {
+      thread = _thread.default.attachThread();
+    }
+
+    try {
+      return block();
+    } finally {
+      if (isForeignThread) {
+        _thread.default.detachThread(thread);
+      }
+    }
+  }
+  static getRuntimeInformation() {
+    if (this.runtimeInformation) {
+      return this.runtimeInformation;
+    }
+    const snapshot = _api.default.capture_memory_snapshot();
+    try {
+      const runtimeInfo =
+        _api.default.memory_snapshot_get_information(snapshot);
+      this.runtimeInformation = {
+        pointer_size: runtimeInfo[0],
+        object_header_size: runtimeInfo[1],
+        array_header_size: runtimeInfo[2],
+        array_bounds_offset_in_header: runtimeInfo[3],
+        array_size_offset_in_header: runtimeInfo[4],
+        allocation_granularity: runtimeInfo[5],
+      };
+    } finally {
+      _api.default.free_captured_memory_snapshot(snapshot);
+    }
+    return this.runtimeInformation;
+  }
+  static getMethodName(method) {
+    return _api.default.method_get_name(method).readUtf8String();
+  }
+  static getAllClassMethods(klass) {
+    const classmethods = [];
+    const iter = Memory.alloc(Process_pointerSize);
+
+    while (true) {
+      const method = _api.default.class_get_methods(klass, iter);
+      if (method.isNull()) {
+        break;
+      }
+      classmethods.push(method);
+    }
+
+    return classmethods;
+  }
+  static getAllClassFields(klass) {
+    const classfields = [];
+    const iter = Memory.alloc(Process_pointerSize);
+
+    while (true) {
+      const field = _api.default.class_get_fields(klass, iter);
+      if (field.isNull()) {
+        break;
+      }
+      classfields.push(field);
+    }
+
+    return classfields;
+  }
+  static getAllClassInterfaces(klass) {
+    const classinterfaces = [];
+    const iter = Memory.alloc(Process_pointerSize);
+
+    while (true) {
+      const _interface = _api.default.class_get_interfaces(klass, iter);
+      if (_interface.isNull()) {
+        break;
+      }
+      classinterfaces.push(_interface);
+    }
+
+    return classinterfaces;
+  }
+  static getNestedKlasses(klass) {
+    const nested_classes = [];
+    const iter = Memory.alloc(Process_pointerSize);
+
+    while (true) {
+      const _class = _api.default.class_get_nested_types(klass, iter);
+      if (_class.isNull()) {
+        break;
+      }
+      nested_classes.push(_class);
+    }
+
+    return nested_classes;
+  }
+  static getNestedClass(klass, className) {
+    let nklass = klass;
+    for (const deepNest = className.split("/"); deepNest.length > 0; ) {
+      const nestName = deepNest.shift();
+      nklass = Core._nestFinder(nklass, nestName);
+
+      if (!nklass) {
+        return;
+      }
+    }
+    return nklass.equals(klass) || nklass;
+  }
+  static _nestFinder(klass, className) {
+    const nests = Core.getNestedKlasses(klass);
+
+    for (const nest of nests) {
+      if (Core.getClassname(nest) === className) {
+        return nest;
+      }
+    }
+  }
+  static getMethod(klass, methodname, args_count) {
+    const method = _api.default.class_get_method_from_name(
+      klass,
+      Memory.allocUtf8String(methodname),
+      args_count
+    );
+    return method.isNull()
+      ? void error(
+          `method ${methodname} (with ${args_count} args) is null or non-existant.`
+        )
+      : method;
+  }
+  static createObject(klass) {
+    const obj = _api.default.object_new(klass);
+    return obj;
+  }
+  static getObjectClassname(obj) {
+    const klass = _api.default.object_get_class(obj);
+    return Core.getClassname(klass);
+  }
+  static getObjectClass(obj) {
+    const klass = _api.default.object_get_class(obj);
+    return klass;
+  }
+  static createString(string) {
+    const str_ptr = Memory.allocUtf16String(string);
+    const il2cpp_string = _api.default.string_new_utf16(str_ptr, string.length);
+    return il2cpp_string;
+  }
+  static getClassFromImage(image, count) {
+    return _api.default.image_get_class(image, count);
+  }
+  static getClassname(klass) {
+    return _api.default.class_get_name(klass).readUtf8String();
+  }
+  static getClassNamespace(klass) {
+    return _api.default.class_get_namespace(klass).readUtf8String();
+  }
+  static getTypename(type) {
+    return _api.default.type_get_name(type).readUtf8String();
+  }
+  static methodReturninfo(method) {
+    return _api.default.method_get_return_type(method);
+  }
+  static getArgsCount(method) {
+    return _api.default.method_get_param_count(method);
+  }
+  static getAssemblies() {
+    if (!this.globalDomain) {
+      throw new Error(
+        "There is no Domain from which to pick assemblies from! Are you sure Dittolib is initialized?"
+      );
+    }
+    let size = Memory.alloc(Process_pointerSize);
+    const assemblies = _api.default.domain_get_assemblies(
+      this.globalDomain,
+      size
+    );
+    size = size.readU32();
+    const images = [];
+    for (let i = 0; i < size; i++) {
+      const assembly = assemblies.add(Process_pointerSize * i).readPointer();
+      const image = _api.default.assembly_get_image(assembly);
+      const imageName = _api.default.image_get_name(image).readUtf8String();
+      const imageClassCount = _api.default.image_get_class_count(image);
+
+      if (imageName == "mscorlib.dll" || imageName == "Assembly-CSharp.dll") {
+        images.unshift({
+          name: imageName,
+          ptr: image,
+          count: imageClassCount,
+        });
+      } else {
+        images.push({ name: imageName, ptr: image, count: imageClassCount });
+      }
+    }
+    return images;
+  }
+  static readString(obj) {
+    return (
+      obj.isNull() || obj.add(2 * Process_pointerSize + 4).readUtf16String()
+    );
+  }
+  static getArrayLength(array) {
+    return _api.default.array_length(array);
+  }
+  static getArrayByteSize(array) {
+    return _api.default.array_get_byte_length(array);
+  }
+  static createArray(klass, length) {
+    const array = _api.default.array_new(klass, length);
+    return array;
+  }
+  static readArray(address) {
+    const start = address.add(4 * Process_pointerSize);
+    const byteSize = Core.getArrayByteSize(address);
+    const length = Core.getArrayLength(address);
+    const array = [];
+    for (let i = 0; i < length; i++) {
+      const ele = start.add((byteSize / length) * i);
+      array.push(ele);
+    }
+    return array;
+  }
+  static getArgNames(method, args_count) {
+    const arg_names = [];
+    for (let i = 0; i < args_count; i++) {
+      arg_names.push(
+        _api.default.method_get_param_name(method, i).readUtf8String()
+      );
+    }
+    return arg_names;
+  }
+  static getArgTypes(method, args_count) {
+    const arg_type_names = [];
+    for (let i = 0; i < args_count; i++) {
+      const type = _api.default.method_get_param(method, i); // const klass = Il2cppApi.class_from_il2cpp_type(type);
+      // const klassName = Core.getClassname(klass);
+      // cachedClasses[klassName] = klass;
+      arg_type_names.push(Core._getJSType(type));
+    }
+    return arg_type_names;
+  }
+  static getReturnType(method) {
+    const type = _api.default.method_get_return_type(method); // const klass = Il2cppApi.class_from_il2cpp_type(type);
+    // const klassName = Core.getClassname(klass);
+    // cachedClasses[klassName] = klass;
+    return Core._getJSType(type);
+  }
+  static getFieldType(field) {
+    const type = _api.default.field_get_type(field); // const klass = Il2cppApi.class_from_il2cpp_type(type);
+    // const klassName = Core.getClassname(klass);
+    // cachedClasses[klassName] = klass;
+    return Core._getJSType(type);
+  }
+  static getMethodModifiers(method) {
+    const modifiers = [];
+    const flags = _api.default.method_get_flags(method, 0);
+    const access = flags & _consts.default.METHOD_ATTRIBUTE_MEMBER_ACCESS_MASK;
+
+    access === _consts.default.METHOD_ATTRIBUTE_PRIVATE
+      ? modifiers.push("private")
+      : access === _consts.default.METHOD_ATTRIBUTE_ASSEMBLY
+      ? modifiers.push("internal")
+      : access === _consts.default.METHOD_ATTRIBUTE_FAM_AND_ASSEM
+      ? modifiers.push("private protected")
+      : access === _consts.default.METHOD_ATTRIBUTE_FAMILY
+      ? modifiers.push("protected")
+      : access === _consts.default.METHOD_ATTRIBUTE_FAM_OR_ASSEM
+      ? modifiers.push("protected internal")
+      : access === _consts.default.METHOD_ATTRIBUTE_PUBLIC
+      ? modifiers.push("public")
+      : undefined;
+
+    if (flags & _consts.default.METHOD_ATTRIBUTE_STATIC) {
+      modifiers.push("static");
+    }
+
+    if (flags & _consts.default.METHOD_ATTRIBUTE_ABSTRACT) {
+      modifiers.push("abstract");
+
+      (flags & _consts.default.METHOD_ATTRIBUTE_VTABLE_LAYOUT_MASK) ==
+        _consts.default.METHOD_ATTRIBUTE_REUSE_SLOT &&
+        modifiers.push("override");
+    } else if (flags & _consts.default.METHOD_ATTRIBUTE_FINAL) {
+      if (
+        (flags & _consts.default.METHOD_ATTRIBUTE_VTABLE_LAYOUT_MASK) ==
+        _consts.default.METHOD_ATTRIBUTE_REUSE_SLOT
+      ) {
+        modifiers.push("sealed override");
+      }
+    } else if (flags & _consts.default.METHOD_ATTRIBUTE_VIRTUAL) {
+      if (
+        (flags & _consts.default.METHOD_ATTRIBUTE_VTABLE_LAYOUT_MASK) ==
+        _consts.default.METHOD_ATTRIBUTE_NEW_SLOT
+      ) {
+        modifiers.push("virtual");
+      } else {
+        modifiers.push("override");
+      }
+    }
+
+    if (flags & _consts.default.METHOD_ATTRIBUTE_PINVOKE_IMPL) {
+      modifiers.push("extern");
+    }
+
+    return modifiers;
+  }
+  static getFieldModifiers(field) {
+    const type = _api.default.field_get_type(field);
+    const attrs = _api.default.type_get_attrs(type);
+    const access = attrs & _consts.default.FIELD_ATTRIBUTE_FIELD_ACCESS_MASK;
+    const modifiers = [];
+
+    access === _consts.default.FIELD_ATTRIBUTE_PRIVATE
+      ? modifiers.push("private")
+      : access === _consts.default.FIELD_ATTRIBUTE_PUBLIC
+      ? modifiers.push("public")
+      : access === _consts.default.FIELD_ATTRIBUTE_FAMILY
+      ? modifiers.push("protected")
+      : access === _consts.default.FIELD_ATTRIBUTE_FAM_AND_ASSEM
+      ? modifiers.push("internal")
+      : access === _consts.default.FIELD_ATTRIBUTE_FAM_OR_ASSEM
+      ? modifiers.push("protected internal")
+      : undefined;
+
+    if (attrs & _consts.default.FIELD_ATTRIBUTE_LITERAL) {
+      modifiers.push("const");
+    } else {
+      attrs & _consts.default.FIELD_ATTRIBUTE_STATIC &&
+        modifiers.push("static");
+
+      attrs & _consts.default.FIELD_ATTRIBUTE_INIT_ONLY &&
+        modifiers.push("readonly");
+    }
+
+    return modifiers;
+  }
+  static getSystemType(klass) {
+    const type = _api.default.class_get_type(klass);
+    const system_type = _api.default.type_get_object(type);
+    return system_type;
+  }
+  static getSystemTypeClass(type) {
+    return _api.default.class_from_system_type(type);
+  }
+  static getClassParent(klass) {
+    return _api.default.class_get_parent(klass);
+  }
+  static areTypesEqual(type1, type2) {
+    return _api.default.type_equals(type1, type2);
+  }
+  static isAssignableFrom(klass, oklass) {
+    return _api.default.class_is_assignable_from(klass, oklass);
+  }
+  static getTypeClass(type) {
+    return _api.default.class_from_il2cpp_type(type);
+  }
+  static getClassType(klass) {
+    return _api.default.class_get_type(klass);
+  }
+  static getFieldName(field) {
+    return _api.default.field_get_name(field).readUtf8String();
+  }
+  static _getJSType(type) {
+    const typeClass = Core.getTypeClass(type);
+    if (Core.isNullableArgument(typeClass)) {
+      const nullableBaseType = Core.getNullableArgumentType(typeClass);
+      const baseType = Core._getJSType(nullableBaseType);
+      return getNullableType(Core.getTypename(type), type, baseType);
+    }
+    const id = _api.default.type_get_type(type);
+    const typeName = Core.typeEnumMap[id];
+    if (!typeName || !!_api.default.type_is_byref(type)) {
+      return getObjectType(Core.getTypename(type), type);
+    }
+    if (typeName == "array") {
+      const elementKlass = _api.default.class_get_element_class(typeClass);
+      const elementType = _api.default.class_get_type(elementKlass);
+      const elementTypeName = Core._getJSType(elementType).name;
+      return isPrimitive(elementTypeName)
+        ? getPrimitiveArrayType(elementTypeName)
+        : getObjectArrayType(Core.getTypename(elementType), elementType);
+    }
+    if (typeName == "valuetype") {
+      if (Core.isClassEnum(typeClass)) {
+        const baseType = _api.default.class_enum_basetype(typeClass);
+        return Core._getJSType(baseType);
+      } // Its a struct
+      return getObjectType(Core.getTypename(type), type);
+    }
+    return getPrimitiveType(typeName);
+  }
+  static getPrimitiveField(obj, field, value) {
+    _api.default.field_get_value(obj, field, value);
+  }
+  static setPrimitiveField(obj, field, value) {
+    _api.default.field_set_value(obj, field, value);
+  }
+  static getField(obj, field) {
+    return _api.default.field_get_value_object(field, obj);
+  }
+  static getValueSize(typeKlass) {
+    return _api.default.class_value_size(typeKlass, NULL);
+  }
+  static getFieldOffset(field) {
+    return `0x${_api.default.field_get_offset(field).toString(16)}`;
+  }
+  static setField(obj, field, value) {
+    _api.default.field_set_value_object(obj, field, value);
+  }
+  static getStaticField(field, value) {
+    _api.default.field_static_get_value(field, value);
+  }
+  static setStaticField(field, value) {
+    _api.default.field_static_set_value(field, value);
+  }
+  static methodInvoke(method, obj, params) {
+    let paramsData;
+    let exception = Memory.alloc(Process_pointerSize);
+    if (params.length > 0) {
+      paramsData = Memory.alloc(Process_pointerSize * params.length);
+      for (let index = 0; index < params.length; index++) {
+        paramsData.add(index * Process_pointerSize).writePointer(params[index]);
+      }
+    } else {
+      paramsData = NULL;
+    }
+
+    if (!_thread.default.getCurrentThread()) {
+      _thread.default.attachThread();
+    }
+
+    const retObj = _api.default.runtime_invoke(
+      method,
+      obj,
+      paramsData,
+      exception
+    );
+    exception = exception.readPointer();
+
+    if (!exception.isNull()) {
+      // to debug use:
+      //      Ditto.use("MapTileStreamService").AddReadyTile.attach({
+      //          onEnter: function(args) {
+      //              breakpoint;
+      //          },
+      //      });
+      // and when breakpointed, call args[0].GetTileData(0,0)
+      const message = Memory.alloc(MAX_EXCEPTION_SIZE);
+      _api.default.format_exception(exception, message, MAX_EXCEPTION_SIZE);
+      const builtMessage = message.readUtf8String(); // stacktraces don't work. it should work properly in debug builds
+      // but should work somewhat in release builds. returns empty instead.
+      // const stackTrace = Memory.alloc(65536);
+      // Il2cppApi.format_stack_trace(exception, stackTrace, 65536);
+      // builtMessage += `\nStack: ${stackTrace.readUtf8String()}`;
+      throw new Error(
+        `Failed to invoke ${_obfmap.default.getUnObfuscated(
+          Core.getObjectClassname(obj)
+        )}.` +
+          `${_obfmap.default.getUnObfuscated(
+            Core.getMethodName(method)
+          )} ---> ${builtMessage}`
+      );
+    }
+
+    return retObj;
+  }
+  static Unbox(obj) {
+    return _api.default.object_unbox(obj);
+  }
+  static Box(klass, data) {
+    return _api.default.value_box(klass, data);
+  }
+  static raiseException() {
+    const exception = _api.default.get_exception_argument_null(
+      Core.createString("lol")
+    ); // Il2cppApi.raise_exception(exc);
+    if (!exception.isNull()) {
+      const message = Memory.alloc(MAX_EXCEPTION_SIZE);
+      _api.default.format_exception(exception, message, MAX_EXCEPTION_SIZE);
+      let builtMessage = message.readUtf8String();
+      _api.default.format_stack_trace(exception, message, MAX_EXCEPTION_SIZE);
+      builtMessage += `\nStack: ${message.readUtf8String()}`;
+      error(builtMessage);
+    }
+  }
+  static MonitorEnter(obj) {
+    const tryEnter = _api.default.monitor_try_enter(obj, 30);
+
+    if (!tryEnter) {
+      error(
+        "Maximum timeout of 30 secs reached to lock the object for synchronized"
+      );
+    }
+  }
+  static MonitorExit(obj) {
+    _api.default.monitor_exit(obj);
+  }
+  static getInstances(klass, mode = 1) {
+    const instances = [];
+    if (mode == 2) {
+      const snapshot = _api.default.capture_memory_snapshot();
+      const gcHandle = snapshot.add(6 * Process_pointerSize);
+      const count = gcHandle.readU32();
+      const start = gcHandle.add(Process_pointerSize).readPointer();
+      for (let index = 0; index != count; index++) {
+        const obj = start.add(Process_pointerSize * index).readPointer();
+        let otherKlass;
+        try {
+          otherKlass = obj.readPointer();
+
+          if (klass.equals(otherKlass)) {
+            instances.push(obj);
+          }
+        } catch (e) {}
+      }
+      _api.default.free_captured_memory_snapshot(snapshot);
+      return instances;
+    }
+    const chooseCallback = new NativeCallback(
+      (objs, size) => {
+        for (let i = 0; i < size; i++) {
+          const pointer = objs.add(i * Process.pointerSize).readPointer();
+          instances.push(pointer);
+        }
+      },
+      "void",
+      ["pointer", "int", "pointer"]
+    );
+    if (gte(this.unityVersion, "2021.2.0")) {
+      const reallocationCallback = new NativeCallback(
+        (objs, size) =>
+          objs.isNull()
+            ? _api.default.alloc(size)
+            : (_api.default.free(objs), NULL),
+        "pointer",
+        ["pointer", "size_t", "pointer"]
+      );
+
+      const state = _api.default.unity_liveness_allocate_struct(
+        klass,
+        0,
+        chooseCallback,
+        NULL,
+        reallocationCallback
+      );
+
+      _api.default.stop_gc_world();
+      _api.default.unity_liveness_calculation_from_statics(state);
+      _api.default.unity_liveness_finalize(state);
+      _api.default.unity_liveness_free_struct(state);
+      _api.default.start_gc_world();
+      return instances;
+    }
+    const onWorld = new NativeCallback(() => {}, "void", []);
+
+    const state = _api.default.unity_liveness_calculation_begin(
+      klass,
+      0,
+      chooseCallback,
+      NULL,
+      onWorld,
+      onWorld
+    );
+
+    _api.default.unity_liveness_calculation_from_statics(state);
+    _api.default.unity_liveness_calculation_end(state);
+    return instances;
+  }
+  static makeDestructor(obj) {
+    const gcHandle = _api.default.gchandle_new(obj, 0);
+    return () => {
+      _api.default.gchandle_free(gcHandle);
+    };
+  }
+  static UsedSize() {
+    return _api.default.gc_get_used_size();
+  }
+  static isClassStruct(klass) {
+    return (
+      !!klass &&
+      !(Core.isClassEnum(klass) || !_api.default.class_is_valuetype(klass))
+    );
+  }
+  static isClassEnum(klass) {
+    return !!_api.default.class_is_enum(klass);
+  }
+  static isClassAbstract(klass) {
+    return !!_api.default.class_is_abstract(klass);
+  }
+  static isClassInterface(klass) {
+    return !!_api.default.class_is_interface(klass);
+  }
+  static isClassGeneric(klass) {
+    return !!_api.default.class_is_generic(klass);
+  }
+  static getClassAssemblyName(klass) {
+    return _api.default.class_get_assemblyname(klass).readUtf8String();
+  }
+  static getClassImageName(klass) {
+    const image = _api.default.class_get_image(klass);
+    return _api.default.image_get_name(image).readUtf8String();
+  }
+  static DumpStats(file_path) {
+    const path = Memory.allocUtf8String(file_path);
+    return !!_api.default.stats_dump_to_file(path);
+  }
+  static getClassInstanceSize(klass) {
+    return _api.default.class_instance_size(klass);
+  }
+  static getClassDeclaringType(klass) {
+    return _api.default.class_get_declaring_type(klass);
+  }
+  static getClassIsAssignable(klass, okklass) {
+    return _api.default.class_is_assignable_from(klass, okklass);
+  }
+  static isNullableArgument(klass) {
+    const nullable_klass = Core.nullableClass;
+    return nullable_klass.equals(klass);
+  }
+  static isNullableFieldOrType(fieldOrType) {
+    const nullable_klass = Core.nullableClass.readPointer();
+    return nullable_klass.equals(fieldOrType.readPointer());
+  }
+  static getClassNameFromMethodInfo(methodInfo) {
+    if (!methodInfo) {
+      return null;
+    }
+    const klass = ptr(methodInfo)
+      .add(3 * Process.pointerSize)
+      .readPointer();
+    return klass
+      .add(2 * Process.pointerSize)
+      .readPointer()
+      .readCString();
+  }
+  static getNullableArgumentType(klass) {
+    const generic_class = klass.add(12 * Process_pointerSize).readPointer();
+    const context = generic_class.add(Process_pointerSize);
+    const class_inst = context.readPointer();
+    const type_argvs = class_inst.add(Process_pointerSize).readPointer();
+    return type_argvs.readPointer();
+  }
+  static makeNullable(value) {
+    const nullable_klass = Core.nullableClass;
+    return Core.Box(nullable_klass, value);
+  }
+  static GcDisable() {
+    _api.default.gc_disable();
+  }
+  static isGcDisabled() {
+    return !!_api.default.gc_is_disabled();
+  }
+  static GcEnable() {
+    _api.default.gc_enable();
+  }
+  static GcCollect(gens) {
+    _api.default.gc_collect(gens);
+  }
+  static GcCollectALittle() {
+    return _api.default.gc_collect_a_little();
+  }
+  static GcStopWorld() {
+    return _api.default.stop_gc_world();
+  }
+  static GcStartWorld() {
+    return _api.default.start_gc_world();
+  }
+  static GcStartIncremental() {
+    return _api.default.gc_start_incremental_collection();
+  }
+}
+export default Core;

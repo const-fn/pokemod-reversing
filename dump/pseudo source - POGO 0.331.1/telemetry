@@ -1,0 +1,171 @@
+import { cyrb53 } from "./utils/utils";
+import { yetAnotherRequestLibrary } from "./utils/yarlib";
+export const __esModule = true;
+const _exception = _interopRequireDefault(require("./utils/exception"));
+const _core = _interopRequireDefault(require("./core"));
+function _interopRequireDefault(obj) {
+  return obj && obj.__esModule ? obj : { default: obj };
+}
+class Telemetry {
+  // @see exceptionless models are available at:
+  // https://github.com/exceptionless/Exceptionless.JavaScript/tree/main/packages/core/src/models/data
+  static token = "";
+  static enabled = true;
+  static url = "";
+  static userData = undefined;
+  static _identity = "";
+  static releaseVersion;
+  static environment;
+  static get headers() {
+    return {
+      Authorization: `Bearer ${Telemetry.token}`,
+      "Content-Type": "application/json",
+    };
+  }
+  static get identity() {
+    if (!Telemetry._identity) {
+      const cModule = new CModule(
+        `
+                #include <gum/guminterceptor.h>
+
+                FILE* popen(const char* command, const char* mode);
+                void pclose(FILE* stream);
+                int fgets(char* str, int num, FILE* stream);
+
+                char* read_one_line(char* cmd) {
+                    FILE* fp = popen(cmd, "r");
+                    if (fp == NULL) return NULL;
+
+                    char *buf = g_malloc(256);
+                    // gets only the last line of the output for performance reasons
+                    while (fgets(buf, 256, fp) != NULL) {};
+                    pclose(fp);
+                    return buf;
+                }`,
+        {
+          popen: new NativeFunction(
+            Module.findExportByName("libc.so", "popen"),
+            "pointer",
+            ["pointer", "pointer"]
+          ),
+          fgets: new NativeFunction(
+            Module.findExportByName("libc.so", "fgets"),
+            "pointer",
+            ["pointer", "int", "pointer"]
+          ),
+          pclose: new NativeFunction(
+            Module.findExportByName("libc.so", "pclose"),
+            "int",
+            ["pointer"]
+          ),
+        }
+      );
+
+      const cmd = (prop) => {
+        const read_one_line = new NativeFunction(
+          cModule.read_one_line,
+          "pointer",
+          ["pointer"]
+        );
+
+        const retval = read_one_line(Memory.allocUtf8String(prop));
+        return retval.isNull() ? "" : retval.readCString().trim();
+      }; // if it fails just pick anything unique enough
+
+      [
+        "gsm.sn1",
+        "ril.serialnumber",
+        "ro.serialno",
+        "persist.radio.serialno",
+        "ro.boot.serialno",
+        "ro.vendor.serialno",
+        "ro.boot.deviceid",
+        "ro.vendor.deviceid",
+        "ro.boot.mac",
+        "vendor.boot.serialno",
+        "gsm.serial",
+        "sys.serialnumber",
+        "ro.ril.oem.sno",
+        "ril.cdma.esn",
+        "ro.boot.ap_serial",
+        "ro.vendor.hon.imei.num",
+        "ro.vendor.hon.extserial.num",
+        "vendor.gsm.serial",
+        "ro.ril.oem.wifimac",
+        "ro.ril.oem.btmac",
+        "ro.ril.oem.imei",
+      ].some((prop) => {
+        const retval = cmd(`getprop ${prop}`);
+        if (retval !== "") {
+          Telemetry._identity = cyrb53(retval);
+          return true;
+        }
+      });
+
+      cModule.dispose();
+      Telemetry._identity =
+        Telemetry._identity || cyrb53(Math.random().toString());
+    }
+    return Telemetry._identity;
+  }
+  static sendErrorTelemetry(data) {
+    // TODO
+    Telemetry._sendTelemetry(data);
+  }
+  static sendFeatureTelemetry(feature_flag) {
+    const data = {
+      type: "usage",
+      date: new Date().toISOString(),
+      source: feature_flag,
+    };
+    return Telemetry._sendTelemetry(data);
+  }
+  static sendLogTelemetry(type, message, value = null) {
+    const data = {
+      type: "log",
+      date: new Date().toISOString(),
+      source: type,
+      message,
+      value,
+    };
+    return Telemetry._sendTelemetry(data);
+  }
+  static _sendTelemetry(data) {
+    let _Telemetry$userData;
+    let _Telemetry$userData2;
+    let _Telemetry$userData3;
+    return !Telemetry.token && Telemetry.enabled
+      ? (_exception.default._log(
+          color.red.bold(
+            "Exceptionless token is unset. Will not send telemetry!"
+          )
+        ),
+        void (Telemetry.enabled = false))
+      : (Object.assign(data, {
+          "@user": {
+            identity: Telemetry.identity,
+            name:
+              null == (_Telemetry$userData = Telemetry.userData) ||
+              _Telemetry$userData.username ||
+              Telemetry.identity,
+          },
+          email:
+            null == (_Telemetry$userData2 = Telemetry.userData) ||
+            _Telemetry$userData2.email,
+          tier:
+            null == (_Telemetry$userData3 = Telemetry.userData) ||
+            _Telemetry$userData3.tier,
+        }),
+        _core.default.dittoDebug &&
+          console.log(
+            JSON.stringify(data, null, 4),
+            JSON.stringify(Telemetry.headers, null, 4)
+          ),
+        yetAnotherRequestLibrary(
+          Telemetry.url,
+          JSON.stringify(data),
+          Telemetry.headers
+        ));
+  }
+}
+export { Telemetry };

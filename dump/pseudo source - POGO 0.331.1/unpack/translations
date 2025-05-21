@@ -1,0 +1,15 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const English_1 = __importDefault(require("./English"));
+const BrazilianPortuguese_1 = __importDefault(require("./BrazilianPortuguese"));
+const Russian_1 = __importDefault(require("./Russian"));
+const Spanish_1 = __importDefault(require("./Spanish"));
+
+const translations = {
+  English: English_1.default,
+  BrazilianPortuguese: BrazilianPortuguese_1.default,
+  Russian: Russian_1.default,
+  Spanish: Spanish_1.default,
+};
+
+export default translations;

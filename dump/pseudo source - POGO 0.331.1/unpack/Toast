@@ -1,0 +1,157 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ObjectInstance_1 = __importDefault(require("./ObjectInstance"));
+
+const toastServiceInstance = new ObjectInstance_1.default(
+  "Niantic.Holoholo.UI.ToastService"
+);
+
+ditto_1.default.onInitialize(() => {
+  const ToastService = ditto_1.default.use("Niantic.Holoholo.UI.ToastService");
+  ToastService.$ctor.attach({
+    onEnter() {
+      toastServiceInstance.value = this;
+    },
+  });
+});
+function oneLine(message) {
+  ditto_1.default
+    .use("Niantic.Platform.Ditto.Plugin.DittoPlugin")
+    .Update.probe(() => {
+      let _toastServiceInstance;
+      let _toastServiceInstance2;
+
+      if (null != (_toastServiceInstance = toastServiceInstance.value)) {
+        _toastServiceInstance.lineToastPrefab.base.message.set_supportRichText(
+          true
+        );
+      }
+
+      if (null != (_toastServiceInstance2 = toastServiceInstance.value)) {
+        _toastServiceInstance2.OneLine(message);
+      }
+    });
+}
+export { oneLine };
+function oneLineBig(message) {
+  ditto_1.default
+    .use("Niantic.Platform.Ditto.Plugin.DittoPlugin")
+    .Update.probe(() => {
+      let _toastServiceInstance3;
+      let _toastServiceInstance4;
+
+      if (null != (_toastServiceInstance3 = toastServiceInstance.value)) {
+        _toastServiceInstance3.lineToastPrefab.base.message.set_supportRichText(
+          true
+        );
+      }
+
+      if (null != (_toastServiceInstance4 = toastServiceInstance.value)) {
+        _toastServiceInstance4.OneLineMedium(message);
+      }
+    });
+}
+export { oneLineBig };
+function oneLineMedium(message) {
+  ditto_1.default
+    .use("Niantic.Platform.Ditto.Plugin.DittoPlugin")
+    .Update.probe(() => {
+      let _toastServiceInstance5;
+      let _toastServiceInstance6;
+
+      if (null != (_toastServiceInstance5 = toastServiceInstance.value)) {
+        _toastServiceInstance5.lineToastPrefab.base.message.set_supportRichText(
+          true
+        );
+      }
+
+      if (null != (_toastServiceInstance6 = toastServiceInstance.value)) {
+        _toastServiceInstance6.OneLineMedium(message);
+      }
+    });
+}
+export { oneLineMedium };
+function RewardItem(item, count, awardType = 0) {
+  ditto_1.default
+    .use("Niantic.Platform.Ditto.Plugin.DittoPlugin")
+    .Update.probe(() => {
+      let _toastServiceInstance7;
+
+      if (null != (_toastServiceInstance7 = toastServiceInstance.value)) {
+        _toastServiceInstance7.RewardItem(item, count, awardType);
+      }
+    });
+}
+export { RewardItem };
+function RewardItemWithSprite(
+  sprite,
+  spriteRequest,
+  name,
+  amount,
+  awardType = 0
+) {
+  ditto_1.default
+    .use("Niantic.Platform.Ditto.Plugin.DittoPlugin")
+    .Update.probe(() => {
+      toastServiceInstance.value.RewardItem(
+        sprite,
+        spriteRequest,
+        name,
+        amount,
+        awardType
+      );
+    });
+}
+export { RewardItemWithSprite };
+function RewardItemStardust(count) {
+  ditto_1.default
+    .use("Niantic.Platform.Ditto.Plugin.DittoPlugin")
+    .Update.probe(() => {
+      let _toastServiceInstance8;
+
+      if (null != (_toastServiceInstance8 = toastServiceInstance.value)) {
+        _toastServiceInstance8.RewardItemStardust(count);
+      }
+    });
+}
+export { RewardItemStardust };
+function RewardItemMegaResource(pokemonId, count) {
+  ditto_1.default
+    .use("Niantic.Platform.Ditto.Plugin.DittoPlugin")
+    .Update.probe(() => {
+      let _toastServiceInstance9;
+
+      if (null != (_toastServiceInstance9 = toastServiceInstance.value)) {
+        _toastServiceInstance9.RewardItemMegaResource(pokemonId, count);
+      }
+    });
+}
+export { RewardItemMegaResource };
+function ShowQuestUpdate(
+  title,
+  description = "",
+  context = 2,
+  updateCount = 0,
+  updateMax = 0
+) {
+  ditto_1.default
+    .use("Niantic.Platform.Ditto.Plugin.DittoPlugin")
+    .Update.probe(() => {
+      let _toastServiceInstance10;
+
+      if (null != (_toastServiceInstance10 = toastServiceInstance.value)) {
+        _toastServiceInstance10.ShowQuestUpdate(
+          title,
+          description,
+          updateCount,
+          updateMax,
+          context,
+          null,
+          false,
+          null
+        );
+      }
+    });
+}
+export { ShowQuestUpdate };

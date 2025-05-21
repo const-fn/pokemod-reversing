@@ -1,0 +1,155 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const I18n_1 = __importDefault(require("../utils/I18n"));
+class InstantCatch extends ModuleBase_1.default {
+  constructor() {
+    super();
+    this.catchStatus = "";
+    this.catchStatusCode = 0;
+    this.xlCandy = "";
+    this.ditto = "";
+    this.encounterInteractionStateInst = undefined;
+  }
+  playBreakoutAndFixBerry() {
+    this.encounterInteractionStateInst.PokemonBrokeOut();
+    const encounterPokemon =
+      this.encounterInteractionStateInst.get_EncounterPokemon();
+    encounterPokemon.BreakoutFromPokeball();
+    encounterPokemon.invulnerable = false;
+    const pokeball = this.encounterInteractionStateInst.get_Pokeball();
+    pokeball.SetActive(true);
+    pokeball.pokemon.character.PlayAnimation(1, 0.5, -1);
+    this.encounterInteractionStateInst.set_ActiveBerry(0);
+    const encounterUI = this.encounterInteractionStateInst.get_EncounterUI();
+    encounterUI.namePlate.SetActiveBerry(0);
+  }
+  xlCandyToast(captureScoreProto) {
+    const obtainedXlCandy = captureScoreProto.xlCandy_.get_Item(0);
+    return obtainedXlCandy
+      ? `\n${I18n_1.default.getText("toast.instantResult.xlCandy", {
+          obtainedXlCandy,
+        })}`
+      : "";
+  }
+  init() {
+    super.init();
+    const self = this;
+
+    const EncounterInteractionState = ditto_1.default.use(
+      "Niantic.Holoholo.Encounter.EncounterInteractionState"
+    );
+
+    EncounterInteractionState.IntroCompleted.attach({
+      onEnter() {
+        self.encounterInteractionStateInst = this;
+      },
+    });
+    const CatchPokemonOutProto = ditto_1.default.use("CatchPokemonOutProto");
+    CatchPokemonOutProto[
+      "pb::Niantic.Protobuf.IBufferMessage.InternalMergeFrom"
+    ].attach({
+      onLeave() {
+        self.handleCapture(this);
+      },
+    });
+  }
+  handleCapture(catchPokemonOutProto) {
+    let _catchPokemonOutProto;
+    const catchPokemonOutProto_status = catchPokemonOutProto.status_;
+    switch (catchPokemonOutProto_status) {
+      case 0: {
+        this.catchStatus = I18n_1.default.getText(
+          "toast.instantResult.catchError"
+        );
+
+        this.catchStatusCode = 0;
+        this.xlCandy = "";
+        this.ditto = "";
+        break;
+      }
+      case 1: {
+        this.catchStatus = I18n_1.default.getText(
+          "toast.instantResult.catchSuccess"
+        );
+
+        this.catchStatusCode = 1;
+
+        this.encounterInteractionStateInst.encounterState.EncounterStateComplete(
+          0
+        );
+
+        if (this.isEnabled("TransferOnCatch")) {
+          break;
+        }
+
+        this.catchStatus = I18n_1.default.getText(
+          "toast.instantResult.catchSuccess"
+        );
+
+        this.tocString = "";
+        this.xlCandy = this.xlCandyToast(catchPokemonOutProto.scores_);
+
+        if (!catchPokemonOutProto.displayPokemonDisplay_) {
+          this.ditto = "";
+          break;
+        }
+
+        const isShiny =
+          null ==
+            (_catchPokemonOutProto = catchPokemonOutProto.pokemonDisplay_) ||
+          _catchPokemonOutProto.shiny_;
+        this.ditto = `\n${isShiny ? "Shiny " : ""}Imposter!`;
+        break;
+      }
+      case 2: {
+        this.catchStatus = I18n_1.default.getText(
+          "toast.instantResult.catchEscape"
+        );
+
+        this.catchStatusCode = 2;
+        this.xlCandy = "";
+        this.ditto = "";
+        this.playBreakoutAndFixBerry();
+        break;
+      }
+      case 3: {
+        this.catchStatus = I18n_1.default.getText(
+          "toast.instantResult.catchFled"
+        );
+
+        this.catchStatusCode = 3;
+        this.xlCandy = "";
+        this.ditto = "";
+
+        this.encounterInteractionStateInst.encounterState.EncounterStateComplete(
+          0
+        );
+
+        break;
+      }
+      case 4: {
+        this.catchStatus = I18n_1.default.getText(
+          "toast.instantResult.catchMissed"
+        );
+
+        this.catchStatusCode = 4;
+        this.xlCandy = "";
+        this.ditto = "";
+        this.playBreakoutAndFixBerry();
+      }
+    }
+
+    if (this.catchStatusCode !== 1 || !this.isEnabled("TransferOnCatch")) {
+      Java.send({
+        script: "catch_status",
+        content: {
+          result: `${this.catchStatus}${this.xlCandy}${this.ditto}`,
+          resultCode: this.catchStatusCode,
+        },
+      });
+    }
+  }
+}
+export default InstantCatch;

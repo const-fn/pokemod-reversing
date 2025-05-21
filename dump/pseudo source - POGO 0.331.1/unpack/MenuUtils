@@ -1,0 +1,496 @@
+import ToggleUtils_1 from "./ToggleUtils";
+import ButtonUtils_1 from "./ButtonUtils";
+import UnityStyle_1, { toUnityColor } from "../utils/UnityStyle";
+import PogoUtils_1 from "./PogoUtils";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+
+const ObjectInstance_1 = __importDefault(
+  require("../../main/utils/ObjectInstance")
+);
+
+const DEFAULT_SECONDARY_MENU_COLOR = "#140033";
+
+const MenuStack = {
+  current: null,
+  previous: "",
+  stack: [],
+  setCurrent(id, callback) {
+    if (this.current && this.current.id !== id && id !== this.previous) {
+      this.stack.push(this.current);
+    }
+
+    this.current = { id, callback };
+  },
+  checkStack(currentInstance) {
+    let _this$current;
+    if (
+      currentInstance.toString() ===
+      (null == (_this$current = this.current) || _this$current.ins)
+    ) {
+      if (!this.stack.length) {
+        this.current = null;
+        this.previous = "";
+        return void info("All menus were closed");
+      }
+      PogoUtils_1.PogoUtils.Update(() => {
+        const pop = this.stack.pop();
+        this.previous = pop.id;
+
+        if (pop != null) {
+          pop.callback();
+        }
+      });
+    }
+  },
+};
+
+class MenuUtils {
+  constructor(id) {
+    if (!id) {
+      throw new Error("Please provide an id for this menu");
+    }
+    this.settingsGuiController = null;
+    this.settingsMenuTransform = null;
+    this.viewportContent = null;
+    this.AccountHeader = null;
+    this.ChangeNameAndSignOutButton = null;
+    this.baseButton = null;
+    this.NotificationDescription = null;
+    this.ToggleBgmodeTip = null;
+    this.Divider = null;
+    this.ChangeNameButton = null;
+    this.openCustomMenu = undefined;
+    this.openCustomMenuV2 = undefined;
+    this.settingsWidget = null;
+    this.cloneFactory = null;
+    this.elements = [];
+    this.colors = { primary: null, secondary: null };
+    this.id = id;
+    this.titleText = undefined;
+    this.menuBg = undefined;
+    this.dismissedCallback = undefined;
+    this.openCompletedCallback = undefined;
+    this.postProcessCallback = undefined;
+  }
+  static isOpen(id) {
+    let _MenuStack$current;
+    return (
+      (null == (_MenuStack$current = MenuStack.current) ||
+        _MenuStack$current.id) === id
+    );
+  }
+  get isOpen() {
+    let _MenuStack$current2;
+    return (
+      (null == (_MenuStack$current2 = MenuStack.current) ||
+        _MenuStack$current2.id) === this.id
+    );
+  }
+  static init() {
+    const self = this;
+
+    this.MainMenuGuiController = new ObjectInstance_1.default(
+      "Niantic.Holoholo.Map.UI.MainMenuGuiController",
+      "OpenMenu"
+    );
+
+    this.SettingsInstallerInstance = new ObjectInstance_1.default(
+      "Niantic.Holoholo.Storefront.Settings.Installers.SettingsInstaller"
+    );
+
+    this.UnityEngineObject = ditto_1.default.use("UnityEngine.Object");
+    this.Text = ditto_1.default.use("UnityEngine.UI.Text");
+    this.Image = ditto_1.default.use("UnityEngine.UI.Image");
+    this.Button = ditto_1.default.use("UnityEngine.UI.Button");
+    this.Vector2 = ditto_1.default.use("UnityEngine.Vector2");
+
+    this.ColorTinter = ditto_1.default.use("Niantic.Holoholo.UI.ColorTinter");
+
+    this.Color = ditto_1.default.use("UnityEngine.Color");
+    this.GradientHelper = ditto_1.default.use("GradientHelper");
+    this.UIToggleGraphics = ditto_1.default.use("UIToggleGraphics");
+
+    ditto_1.default.use("Niantic.Holoholo.NUI.GuiController").OnDestroy.attach({
+      onLeave() {
+        Script.nextTick(() => MenuStack.checkStack(this));
+      },
+    });
+
+    const SettingsGuiControllerV2 = ditto_1.default.use(
+      "Niantic.Holoholo.UI.SettingsGuiControllerV2"
+    );
+    SettingsGuiControllerV2.Initialize.replace(function () {
+      this.Initialize();
+
+      if (self.menuInstance) {
+        self.menuInstance.openMenu(this);
+      }
+    });
+  }
+  openMenu(instance) {
+    let _MenuStack$current3;
+    MenuUtils.menuInstance = undefined;
+
+    if (
+      (null == (_MenuStack$current3 = MenuStack.current) ||
+        _MenuStack$current3.id) === this.id
+    ) {
+      MenuStack.current.ins = instance.base.toString();
+    }
+
+    this.settingsGuiController = instance;
+    this.settingsMenuTransform =
+      this.settingsGuiController.base.base.base.base.get_transform().base;
+
+    this.viewportContent = this.settingsMenuTransform.FindChild(
+      "Content/ScrollPanel/Viewport/Content"
+    ).base;
+
+    const gameObjectsToDestroy = [];
+    for (let i = 0; i < this.viewportContent.GetChildCount(); i++) {
+      const child = this.viewportContent.GetChild(i);
+      const childGameObject = child.base.base.get_gameObject();
+      gameObjectsToDestroy.push(childGameObject);
+    }
+    this.createCloneFactory();
+    this.createSettingsWidget();
+    this.createBaseButtonCloner();
+
+    this.elements.forEach((element) => {
+      switch (element.type) {
+        case "toggle": {
+          this.cloneToggle(element);
+          break;
+        }
+        case "header": {
+          this.cloneHeader(element.text);
+          break;
+        }
+        case "divider": {
+          this.createSettingsWidget();
+          break;
+        }
+        case "button": {
+          this.cloneButton(element);
+          break;
+        }
+        case "custom": {
+          if (typeof element.object == "string") {
+            element.object = this[element.object];
+          }
+
+          if (!element.object) {
+            error("Clonning null object will crash the game, you dummy!");
+            break;
+          }
+
+          const new_custom_obj = MenuUtils.UnityEngineObject.Instantiate(
+            element.object,
+            this.settingsWidget.elements,
+            true
+          );
+
+          if (element.additionalChanges) {
+            element.additionalChanges(new_custom_obj);
+          }
+
+          break;
+        }
+      }
+    });
+
+    gameObjectsToDestroy.forEach((childGameObject) => {
+      MenuUtils.UnityEngineObject.Destroy(childGameObject);
+    });
+
+    const { primary, secondary } = this.colors;
+    if (primary) {
+      let _secondary$hex;
+      let _secondary$alpha;
+
+      this.primaryColor = toUnityColor(primary.hex, primary.alpha);
+
+      this.secondaryColor = toUnityColor(
+        null == (_secondary$hex = secondary == null || secondary.hex)
+          ? DEFAULT_SECONDARY_MENU_COLOR
+          : _secondary$hex,
+        null == (_secondary$alpha = secondary == null || secondary.alpha)
+          ? 0.8
+          : _secondary$alpha
+      );
+    }
+    const backgroundImage = this.settingsMenuTransform
+      .FindChild("Content/Background")
+      .base.base.get_gameObject()
+      .GetComponent(MenuUtils.Image.typeof);
+    this.menuBg = backgroundImage;
+
+    if (this.primaryColor) {
+      const gradient = MenuUtils.GradientHelper.CreateTwoColorGradient(
+        this.primaryColor,
+        this.secondaryColor
+      );
+
+      if (backgroundImage.SetGradient.argNames.length == 2) {
+        backgroundImage.SetGradient(gradient, true);
+      } else {
+        backgroundImage.SetGradient(gradient);
+      }
+    }
+
+    const titleTextView = this.settingsMenuTransform
+      .FindChild("Content/Title")
+      .base.base.get_gameObject()
+      .GetComponentInChildren(MenuUtils.Text.typeof);
+
+    if (titleTextView.$className == "HoloText") {
+      titleTextView.textKey = "";
+      titleTextView.base.set_supportRichText(true);
+      titleTextView.base.set_text(this.title);
+      this.titleText = titleTextView.base;
+    } else if (titleTextView.$className == "I18nText") {
+      titleTextView.base.textKey = "";
+      titleTextView.base.base.set_supportRichText(true);
+      titleTextView.base.base.set_text(this.title);
+      this.titleText = titleTextView.base.base;
+    } else {
+      titleTextView.set_text(this.title);
+      this.titleText = titleTextView;
+    }
+
+    const helpshiftView = this.settingsMenuTransform
+      .FindChild("Content/HelpShiftGuiSection")
+      .base.base.get_gameObject();
+    MenuUtils.UnityEngineObject.Destroy(helpshiftView);
+
+    if (this.dismissedCallback) {
+      info(`Adding Dismissed callback to the "${this.id}" menu`);
+      this.settingsGuiController.base.add_Dismissed(this.dismissedCallback);
+    }
+
+    if (this.openCompletedCallback) {
+      info(`Adding OpenCompleted callback to the "${this.id}" menu`);
+
+      this.settingsGuiController.base.add_OpenCompleted(
+        this.openCompletedCallback
+      );
+    }
+
+    if (this.postProcessCallback) {
+      this.postProcessCallback();
+    }
+  }
+  setTitle(title = "Pokemon Menu") {
+    this.title = title;
+    return this;
+  }
+  setColor(primary, secondary) {
+    this.colors = { primary, secondary };
+    return this;
+  }
+  open() {
+    MenuStack.setCurrent(this.id, () => this.open());
+
+    MenuUtils.menuInstance = this;
+    MenuUtils.MainMenuGuiController.value.ClickSettings();
+  }
+  close() {
+    this.settingsGuiController.ClickExit();
+  }
+  addToggleGroup(groupId) {
+    const toggleGroup = ToggleUtils_1.ToggleUtils.getTogglesFromGroup(groupId);
+
+    toggleGroup.forEach((t) => this.addToggle(t));
+
+    return this;
+  }
+  addToggle(opts) {
+    const { id } = opts;
+    const type = "toggle";
+    const toggle = ToggleUtils_1.ToggleUtils.getToggleFromId(id);
+    return toggle.name
+      ? (this.elements.push({ id, type }), this)
+      : (ToggleUtils_1.ToggleUtils.addToggle(opts),
+        this.elements.push({ id, type }),
+        this);
+  }
+  addDivider() {
+    this.elements.push({ type: "divider" });
+    return this;
+  }
+  addButton(opts) {
+    const {
+      name = null,
+      id = null,
+      callback = null,
+      description = null,
+      shape = "normal",
+    } = opts;
+
+    const type = "button";
+    const button = ButtonUtils_1.ButtonUtils.getButtonFromId(id);
+    return button.name
+      ? (this.elements.push({ id, type, shape }), this)
+      : (ButtonUtils_1.ButtonUtils.addButton({
+          id,
+          callback,
+          name,
+          description,
+        }),
+        this.elements.push({ type, id, shape }),
+        this);
+  }
+  addButtonGroup(groupId) {
+    const buttonGroup = ButtonUtils_1.ButtonUtils.getButtonsFromGroup(groupId);
+
+    buttonGroup.forEach((t) => this.addButton(t));
+
+    return this;
+  }
+  addToggleTip(text) {
+    this.elements.push({ type: "toggle_tip", text });
+    return this;
+  }
+  addCustom(object, additionalChanges = null) {
+    this.elements.push({
+      type: "custom",
+      object,
+      additionalChanges,
+    });
+
+    return this;
+  }
+  cloneToggle(element) {
+    const toggle = ToggleUtils_1.ToggleUtils.getToggleFromId(element.id);
+
+    const newToggle = MenuUtils.UnityEngineObject.Instantiate(
+      this.settingsGuiController.toggleVibration,
+      this.settingsWidget.elements,
+      true
+    );
+
+    const toggleGO = newToggle.base.base.base.base.base.get_gameObject();
+    const toggleText = toggleGO.GetComponentInChildren(MenuUtils.Text.typeof);
+
+    const name = toggle.name.includes("<")
+      ? toggle.name.split(" ").join("\uFEFF".repeat(10))
+      : toggle.name;
+
+    const toggleTextData = `${name}${this.createDescriptionText(
+      toggle.description
+    )}`;
+
+    if (toggleText.$className == "HoloText") {
+      toggleText.base.textKey = "";
+      toggleText.base.set_supportRichText(true);
+      toggleText.base.set_text(toggleTextData);
+    } else if (toggleText.$className == "I18nText") {
+      toggleText.base.textKey = "";
+      toggleText.base.base.set_supportRichText(true);
+      toggleText.base.base.set_text(toggleTextData);
+    } else {
+      toggleText.set_text(toggleTextData);
+      this.titleText = toggleText;
+    }
+
+    newToggle.onValueChanged = null;
+    newToggle.Set(toggle.value, false);
+    const toggleGraphics = toggleGO.GetComponent(
+      MenuUtils.UIToggleGraphics.typeof
+    );
+    ToggleUtils_1.ToggleUtils.attachInstance({
+      id: element.id,
+      instance: newToggle.$instance.toString(),
+      toggleGraphics,
+    });
+  }
+  cloneButton(element) {
+    const button = ButtonUtils_1.ButtonUtils.getButtonFromId(element.id);
+
+    const newButtonRT = MenuUtils.UnityEngineObject.Instantiate(
+      this.baseButton,
+      this.settingsWidget.elements,
+      true
+    );
+
+    const newButton = newButtonRT.base.base.GetComponentsInChildren(
+      MenuUtils.Button.typeof,
+      true
+    )[0];
+
+    newButton.m_OnClick = null;
+
+    const newButtonLabel = newButtonRT.base.base.GetComponentsInChildren(
+      MenuUtils.Text.typeof,
+      true
+    )[0];
+
+    const holoText =
+      newButtonLabel.$className == "I18nText"
+        ? newButtonLabel.base
+        : newButtonLabel;
+
+    holoText.textKey = "";
+    const holoText_base = holoText.base;
+    holoText_base.set_supportRichText(true);
+
+    holoText_base.set_text(
+      `${button.name}${this.createDescriptionText(button.description)}`
+    );
+
+    ButtonUtils_1.ButtonUtils.attachInstance({
+      id: element.id,
+      instance: newButton.$instance.toString(),
+    });
+  }
+  createDescriptionText(text) {
+    return text
+      ? `\n${new UnityStyle_1.RichText(text).boldItalic.size(22).grey}`
+      : "";
+  }
+  createCloneFactory() {
+    const generalSettingsGuiControllerTransform =
+      MenuUtils.SettingsInstallerInstance.value.generalSettingsGuiControllerPrefab.base.base.base.base.get_transform()
+        .base;
+
+    const generalSettingsWidgetTransform = generalSettingsGuiControllerTransform
+      .GetChild(0)
+      .base.GetChild(2)
+      .base.GetChild(0)
+      .base.GetChild(0)
+      .base.GetChild(0).base;
+
+    this.cloneFactory = generalSettingsWidgetTransform.GetChild(1).base;
+    this.cloneFactory.label = generalSettingsWidgetTransform.GetChild(0).base;
+  }
+  createBaseButtonCloner() {
+    const widgetRT = this.viewportContent.FindChild("PreferencesWidget");
+    this.baseButton = widgetRT.base.GetChild(1).base.GetChild(3);
+  }
+  createSettingsWidget() {
+    const widgetRT = this.viewportContent.FindChild("SoundAndHapticsWidget");
+
+    this.settingsWidget = MenuUtils.UnityEngineObject.Instantiate(
+      widgetRT,
+      this.viewportContent,
+      true
+    ).base;
+
+    this.settingsWidget.elements =
+      this.settingsWidget.FindChild("WidgetElements").base;
+    for (let i = 1; i < this.settingsWidget.elements.GetChildCount(); i++) {
+      const child = this.settingsWidget.elements.GetChild(i);
+      const childGameObject = child.base.base.get_gameObject();
+      MenuUtils.UnityEngineObject.Destroy(childGameObject);
+    }
+  }
+  setDismissedCallback(callback) {
+    this.dismissedCallback = callback;
+  }
+  setOpenCompletedCallback(callback) {
+    this.openCompletedCallback = callback;
+  }
+}
+export { MenuUtils };

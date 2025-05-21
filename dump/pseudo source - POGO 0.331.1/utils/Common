@@ -1,0 +1,214 @@
+(function (setImmediate) {
+  (() => {
+    const __importDefault = (mod) =>
+      mod && mod.__esModule ? mod : { default: mod };
+    exports.shouldCancelEvolveSkip = undefined;
+    const ditto_1 = __importDefault(require("@pkmd/ditto"));
+    const versions_1 = require("./ObfuscationMaps/versions");
+    const ObjectInstance_1 = __importDefault(require("./ObjectInstance"));
+    const Telemetry_1 = require("./Telemetry");
+    const UserData_1 = __importDefault(require("./UserData"));
+    const I18n_1 = __importDefault(require("./I18n"));
+
+    if (!UserData_1.default.enabledModules.includes("Joystick")) {
+      setImmediate(() => {
+        Java.performNow(() => {
+          const Location = Java.use("android.location.Location");
+          Location.isFromMockProvider.implementation = () => false;
+        });
+      });
+    }
+
+    ditto_1.default.onInitialize(() => {
+      const Application = ditto_1.default.use("UnityEngine.Application");
+      info(`Unity Version: ${Application.get_unityVersion()}`);
+      const gameVersion = Application.get_version();
+      info(`Game Version: ${gameVersion}`);
+
+      if (!versions_1.supportedVersions[gameVersion]) {
+        error(color.bgRed.white(`Unsupported version ${gameVersion}`));
+        const toastText = `Unsupported version ${gameVersion}!\nUse ${Object.keys(
+          versions_1.supportedVersions
+        )
+          .slice(0, -1)
+          .join(", ")}${
+          Object.keys(versions_1.supportedVersions).length > 1
+            ? ` or ${Object.keys(versions_1.supportedVersions).slice(-1)}`
+            : Object.keys(versions_1.supportedVersions)[0]
+        }`;
+
+        Java.scheduleOnMainThread(() => {
+          const toast = Java.use("android.widget.Toast");
+
+          toast
+            .makeText(
+              Java.use("android.app.ActivityThread")
+                .currentApplication()
+                .getApplicationContext(),
+              Java.use("java.lang.String").$new(toastText),
+              1
+            )
+            .show();
+
+          setTimeout(() => {
+            Java.use("java.lang.System").exit(1);
+          }, 5000 /* 5e3 */);
+        });
+
+        Interceptor.attach(Module.findExportByName(null, "memcpy"), (args) => {
+          args[0] = NULL;
+          args[1] = NULL;
+        });
+
+        (0, Telemetry_1.sendTelemetry)("injected_error_version", {
+          value: `${gameVersion}`,
+        });
+
+        const e = Error(`Unsupported version ${gameVersion}`);
+        e.name = "UnsupportedVersionError";
+        throw e;
+      } else {
+        ditto_1.default.setObfuscationMap(
+          versions_1.supportedVersions[gameVersion]
+        );
+
+        UserData_1.default.onValidGameVersion(gameVersion);
+        info(color.magenta.bold(`Using PoGo version ${gameVersion}.`));
+      }
+
+      (0, Telemetry_1.bootTelemetry)();
+
+      ditto_1.default
+        .use("Niantic.Holoholo.Services.PlayerSupport.PlayerSupportService")
+        .OnLogout.attach({
+          onLeave() {
+            UserData_1.default.handleAccountChange();
+            ObjectInstance_1.default.clearAndReattch();
+            I18n_1.default.onLanguageChange();
+          },
+        });
+
+      let sentTelemetry = false;
+
+      ditto_1.default
+        .use("Niantic.Platform.Ditto.Auth.AuthManager")
+        .ChannelAuthEventCallback.attach({
+          onEnter(args) {
+            const [nativeChannelAuthEvent] = args;
+            const BANNED = 6;
+            const SUSPENDED = 7;
+            const BSOD = 8;
+            if (
+              [BANNED, SUSPENDED, BSOD].includes(nativeChannelAuthEvent) &&
+              !sentTelemetry
+            ) {
+              let _this$authSource;
+              let reason;
+
+              switch (nativeChannelAuthEvent) {
+                case BANNED:
+                  reason = "flagged_banned";
+                  break;
+                case SUSPENDED:
+                  reason = "flagged_was_suspended";
+                  break;
+                case BSOD:
+                  reason = "flagged_maintenance_screen";
+                  break;
+              }
+
+              sentTelemetry = true;
+
+              ditto_1.default.Telemetry._sendTelemetry({
+                type: "usage",
+                date: new Date().toISOString(),
+                source: reason,
+                reference_id:
+                  null == (_this$authSource = this.authSource) ||
+                  _this$authSource.get_AccountName(),
+              });
+            }
+          },
+        });
+
+      ditto_1.default
+        .use("Niantic.Holoholo.PlayerService")
+        ._RequestPlayerFromServer_b__135_0.attach({
+          onEnter(args) {
+            const [playerOutProto] = args;
+
+            if (playerOutProto.player_) {
+              UserData_1.default.username = playerOutProto.player_.name_;
+            }
+
+            if (!sentTelemetry && playerOutProto.warn_) {
+              let _this$authService;
+              let _this$authService$aut;
+              const authSource =
+                null == this ||
+                null == (_this$authService = this.authService) ||
+                null ==
+                  (_this$authService$aut = _this$authService.authManager) ||
+                _this$authService$aut.authSource;
+
+              if (authSource) {
+                sentTelemetry = true;
+
+                ditto_1.default.Telemetry._sendTelemetry({
+                  type: "usage",
+                  date: new Date().toISOString(),
+                  source: "flagged_rw",
+                  reference_id:
+                    authSource == null || authSource.get_AccountName(),
+                });
+              }
+            }
+          },
+        });
+
+      const capacityBytes = 327680;
+      const maxAllowedCells = 500;
+
+      ditto_1.default.use("NewSpatialCacheManager").$ctor.attach({
+        onEnter(args) {
+          info(
+            color.blue(
+              `capacityBytes: ${args[0].toString()}${`. setting to ${capacityBytes}`}`
+            )
+          );
+
+          args[0] = capacityBytes;
+
+          info(
+            color.blue(
+              `maxAllowedCells: ${args[1].toString()}${`. setting to ${maxAllowedCells}`}`
+            )
+          );
+
+          args[1] = maxAllowedCells;
+        },
+        onLeave() {
+          info(color.blue("NewSpatialCacheManager created"));
+          this.capacityBytes = capacityBytes;
+          this.maxAllowedCells = maxAllowedCells;
+        },
+      });
+
+      ditto_1.default
+        .use("RouteIconOverheadCameraZooming")
+        .Initialize.replace(() => {});
+
+      ditto_1.default
+        .use("Niantic.Holoholo.Map.MapEntityService")
+        .get_PoisWhileUpdateProcessing.replace(() => false);
+
+      ditto_1.default
+        .use("Niantic.Holoholo.Map.MapEntityService")
+        .get_PoisWhileAddProcessing.replace(() => false);
+
+      ditto_1.default.use("CameraFacingPOIAnchor").Initialize.replace(() => {});
+    });
+
+    exports.shouldCancelEvolveSkip = false;
+  }).call(this);
+}).call(this, require("timers").setImmediate);

@@ -1,0 +1,979 @@
+import PogoUtils_1 from "../utils/PogoUtils";
+import {
+  RewardItem,
+  RewardItemStardust,
+  RewardItemWithSprite,
+  oneLine,
+} from "../utils/Toast";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const ObjectInstance_1 = __importDefault(require("../utils/ObjectInstance"));
+const I18n_1 = __importDefault(require("../utils/I18n"));
+const UserData_1 = __importDefault(require("../utils/UserData"));
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function withRetry(operation, maxRetries = 5, delayMs = 1000 /* 1e3 */) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (e) {
+      await delay(delayMs * attempt);
+      continue;
+    }
+  }
+  throw new Error("Max retries exceeded");
+}
+class MassGift extends ModuleBase_1.default {
+  constructor() {
+    super();
+    this.OPEN_GIFT_RESULT_SUCCESS = 1;
+    this.OPEN_GIFT_RESULT_ERROR_PLAYER_BAG_FULL = 3;
+    this.OPEN_GIFT_RESULT_ERROR_PLAYER_LIMIT_REACHED = 4;
+    this.OPEN_GIFT_RESULT_ERROR_GIFT_DOES_NOT_EXIST = 5;
+    this.POSTCARD_SUCCESS = 1;
+    this.POSTCARD_ERROR_ALREADY_CREATED = 4;
+    this.POSTCARD_ERROR_INVENTORY_FULL = 5;
+    this.POSTCARD_ERROR_RATE_LIMITED = 7;
+    this.POSTCARD_INVENTORY_DAILY_BUTTERFLY_LIMIT = 9;
+    this.LOOT_ITEM = 1;
+    this.LOOT_STARDUST = 2;
+    this.LOOT_POKEMON_EGG = 7;
+    this.RESULT_SUCCESS = 1;
+    this.RESULT_ERROR_UNKNOWN = 2;
+    this.RESULT_ERROR_PLAYER_DOES_NOT_EXIST = 3;
+    this.RESULT_ERROR_GIFT_DOES_NOT_EXIST = 4;
+    this.RESULT_ERROR_GIFT_ALREADY_SENT_TODAY = 5;
+    this.RESULT_ERROR_PLAYER_HAS_UNOPENED_GIFT = 6;
+    this.RESULT_ERROR_FRIEND_UPDATE = 7;
+    this.RESULT_ERROR_PLAYER_HAS_NO_STICKERS = 8;
+    this.playerName = "";
+    this.instanceList = {};
+    this.selectedFriends = {};
+    this.fromLongClick = false;
+    this.friendCount = 0;
+    this.friendCountText = null;
+    this.giftingService = null;
+
+    this.buttons = {
+      openGifts: {
+        icon: "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",
+        RectTransform: undefined,
+        Button: undefined,
+        GameObject: undefined,
+        position: [-550, 0],
+        action: "open-gifts",
+      },
+      sendGifts: {
+        icon: "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",
+        RectTransform: undefined,
+        Button: undefined,
+        GameObject: undefined,
+        position: [-550, 100],
+        action: "send-gifts",
+      },
+      delFriend: {
+        icon: "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",
+        RectTransform: undefined,
+        Button: undefined,
+        GameObject: undefined,
+        position: [-550, 250],
+        action: "del-friend",
+        background:
+          "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",
+      },
+    };
+  }
+  init() {
+    super.init();
+    this._Vector2 = ditto_1.default.use("UnityEngine.Vector2");
+    this._Vector3 = ditto_1.default.use("UnityEngine.Vector3");
+    this._Object = ditto_1.default.use("UnityEngine.Object");
+    this._Sprite = ditto_1.default.use("UnityEngine.Sprite");
+    this._Rect = ditto_1.default.use("UnityEngine.Rect");
+    this._RectTransform = ditto_1.default.use("UnityEngine.RectTransform");
+    this._Texture2D = ditto_1.default.use("UnityEngine.Texture2D");
+
+    this._ImageConversion = ditto_1.default.use("UnityEngine.ImageConversion");
+
+    this._Image = ditto_1.default.use("UnityEngine.UI.Image");
+    this._Button = ditto_1.default.use("UnityEngine.UI.Button");
+    this._Color = ditto_1.default.use("UnityEngine.Color");
+
+    this._ColorTinter = ditto_1.default.use("Niantic.Holoholo.UI.ColorTinter");
+
+    this._SysConvert = ditto_1.default.use("System.Convert");
+
+    this._buttonLongPressed = ditto_1.default.use(
+      "Niantic.Holoholo.UI.ButtonLongPressed"
+    );
+
+    this._UnityEvent = ditto_1.default.use("UnityEngine.Events.UnityEvent");
+
+    this.eggAssetLookup = new ObjectInstance_1.default(
+      "Niantic.Holoholo.Eggs.EggAssetLookup"
+    );
+
+    this.giftingRpcService = new ObjectInstance_1.default("GiftingRpcService");
+
+    this.stickerService = new ObjectInstance_1.default(
+      "Niantic.Holoholo.Social.Gifting.StickerService",
+      "GetStickerInventory"
+    );
+
+    this.postcardService = new ObjectInstance_1.default("PostCardsRpcService");
+
+    this.friendsListChangedAction = null;
+    this.friendRequestsChangedAction = null;
+    this.friendDetailsChangedAction = null;
+    this.loadingBlocker = null;
+    this.friendsRpcService = null;
+    const self = this;
+
+    ditto_1.default
+      .use("Niantic.Holoholo.Social.UI.PlayerProfileGuiController")
+      .SetFriendCount.replace(function (count, isSubset) {
+        const retval = this.SetFriendCount(count, isSubset);
+        self.friendCount = count;
+        self.friendCountText = this.friendCountText;
+
+        self.friendCountText.set_text(
+          `${Object.keys(self.selectedFriends).length}/${count}`
+        );
+
+        return retval;
+      });
+
+    ditto_1.default
+      .use("Niantic.Holoholo.Social.UI.FriendsListPage")
+      .Initialize.attach({
+        onEnter() {
+          self.giftingService = this.giftingService;
+          self.friendsRpcService = this.friendsRpcService;
+          self.resetSelectedFriends(true, true);
+        },
+      });
+
+    ditto_1.default
+      .use("Niantic.Holoholo.Social.UI.FriendsListPage")
+      .SetFriendActionButton.attach({
+        onEnter(args) {
+          this._cellview = args[0];
+          this._friend = args[2];
+        },
+        onLeave() {
+          const friend = this._friend;
+          const cellView = this._cellview;
+          const friendId = this._friend.player_.playerId_;
+
+          const original_ButtonClickedEvent =
+            cellView.base.friendProfileButton.m_OnClick;
+
+          self._Object.Destroy(cellView.base.friendProfileButton);
+
+          const canvasGroupGO =
+            cellView.base.canvasGroup.base.base.get_gameObject();
+
+          const canvasGroupRT =
+            cellView.base.canvasGroup.base.base.get_transform();
+
+          const backgroundImage =
+            canvasGroupRT.base.base.GetComponentsInChildren(
+              self._Image.typeof,
+              true
+            )[1];
+
+          const colorTinter = self._ColorTinter.$new();
+          colorTinter.targetImage = backgroundImage;
+          colorTinter.TintImage(self._Color.$new(1, 1, 1, 0));
+          const buttonInstance = cellView.base.canvasGroup.$instance.toString();
+          if (
+            !self.instanceList[buttonInstance] ||
+            (self.instanceList[buttonInstance] &&
+              self.instanceList[buttonInstance] != friend)
+          ) {
+            let longButton;
+            let clickButton;
+
+            if (self.instanceList[buttonInstance]) {
+              if (
+                self.instanceList[buttonInstance] &&
+                self.instanceList[buttonInstance] != friend
+              ) {
+                self.instanceList[buttonInstance] = friend;
+
+                clickButton = canvasGroupGO.GetComponent(self._Button.typeof);
+
+                longButton = canvasGroupGO.GetComponent(
+                  self._buttonLongPressed.typeof
+                );
+              }
+            } else {
+              self.instanceList[buttonInstance] = friend;
+              canvasGroupGO.AddComponent(self._Button.typeof);
+
+              clickButton = canvasGroupGO.GetComponent(self._Button.typeof);
+
+              clickButton.m_OnClick != null &&
+                (clickButton.m_OnClick.base.base.RemoveAllListeners(),
+                (clickButton.m_OnClick = null));
+
+              canvasGroupGO.AddComponent(self._buttonLongPressed.typeof);
+
+              longButton = canvasGroupGO.GetComponent(
+                self._buttonLongPressed.typeof
+              );
+
+              longButton.onLongPress != null &&
+                (longButton.onLongPress.base.RemoveAllListeners(),
+                (longButton.onLongPress = null));
+
+              longButton.onClick.base.RemoveAllListeners();
+              longButton.onClick = self._UnityEvent.$new();
+            }
+
+            info(
+              `[MassGift] Create Button Click: ${clickButton.$instance.toString()}`
+            );
+
+            PogoUtils_1.PogoUtils.buttons.addButton({
+              id: `friend-click-${clickButton.$instance.toString()}`,
+              instance: clickButton.$instance.toString(),
+              callback: () => {
+                info(`[MassGift] fromLongClick: ${self.fromLongClick}`);
+
+                if (
+                  !self.fromLongClick &&
+                  (info("[MassGift] SetFriendProfileButton: Clicked", "green"),
+                  self.instanceList[buttonInstance])
+                ) {
+                  if (friendId in self.selectedFriends) {
+                    delete self.selectedFriends[friendId];
+                    cellView.SetBackgroundColor(false);
+                  } else {
+                    self.selectedFriends[friendId] = friend;
+                    cellView.SetBackgroundColor(true);
+                  }
+
+                  const selectedCount = Object.keys(
+                    self.selectedFriends
+                  ).length;
+                  self.friendCountText.set_text(
+                    `${selectedCount}/${self.friendCount}`
+                  );
+                  self.toggleActionButtons(selectedCount > 0);
+                }
+
+                self.fromLongClick = false;
+              },
+            });
+
+            PogoUtils_1.PogoUtils.buttons.addButton({
+              id: `friend-longclick-${longButton.$instance.toString()}`,
+              instance: longButton.$instance.toString(),
+              callback: () => {
+                self.fromLongClick = true;
+                original_ButtonClickedEvent.base.Invoke();
+              },
+            });
+          }
+          cellView.SetBackgroundColor(friendId in self.selectedFriends);
+        },
+      });
+
+    ditto_1.default
+      .use("Niantic.Holoholo.Social.UI.PlayerProfileGuiController")
+      .Initialize.attach({
+        onLeave() {
+          const sortButton = this.sortButton;
+          const sortButtonTO = this.sortButton.GetComponent(
+            self._Button.typeof
+          );
+
+          const sortButtonRT = this.sortButton.GetComponent(
+            self._RectTransform.typeof
+          );
+
+          const loadingBlockerClone = self._Object.Instantiate(
+            this.friendsListPage.base.loadingBlocker,
+            this.friendsListPage.friendsListContainer.base
+          );
+
+          self.loadingBlocker = loadingBlockerClone.base.base.get_gameObject();
+          self.loadingBlocker.set_active(false);
+          self.friendsRpcService = this.friendsRpcService;
+
+          Object.keys(self.buttons).forEach((button_slug) => {
+            info(`[MassGift] Creating button: ${button_slug}`, "green");
+            const buttonSettings = self.buttons[button_slug];
+            self.buttons[button_slug].RectTransform =
+              sortButtonRT.base.FindChild(button_slug);
+
+            if (!self.buttons[button_slug].RectTransform) {
+              const ButtonActions = self._Object.Instantiate(
+                sortButton,
+                sortButton.get_transform(),
+                false
+              );
+              ButtonActions.set_active(false);
+              self.buttons[button_slug].GameObject = ButtonActions;
+              self.buttons[button_slug].Button = ButtonActions.GetComponent(
+                self._Button.typeof
+              );
+              self.buttons[button_slug].Button.m_OnClick = null;
+              const buttonImages = ButtonActions.GetComponentsInChildren(
+                self._Image.typeof
+              );
+              if (buttonSettings != null && buttonSettings.background) {
+                const texture = self._Texture2D.$new(128, 128);
+                self._ImageConversion.LoadImage(
+                  texture,
+                  self._SysConvert.FromBase64String(buttonSettings.background)
+                );
+                const bgButton = self._Sprite
+                  .$new()
+                  .Create(
+                    texture,
+                    self._Rect.$new(0, 0, 128, 128),
+                    self._Vector2.$new(0, 0)
+                  );
+                buttonImages[0].set_overrideSprite(bgButton);
+              }
+              const texture = self._Texture2D.$new(75, 75);
+              self._ImageConversion.LoadImage(
+                texture,
+                self._SysConvert.FromBase64String(buttonSettings.icon)
+              );
+              const iconButton = self._Sprite
+                .$new()
+                .Create(
+                  texture,
+                  self._Rect.$new(0, 0, 75, 75),
+                  self._Vector2.$new(0, 0)
+                );
+              buttonImages[1].set_overrideSprite(iconButton);
+              self._Object.Destroy(buttonImages[2]);
+              self._Object.Destroy(buttonImages[3]);
+              self.buttons[button_slug].RectTransform =
+                ButtonActions.get_transform();
+
+              self.buttons[button_slug].RectTransform.base.base.base.set_name(
+                button_slug
+              );
+
+              self.buttons[button_slug].RectTransform.set_anchoredPosition(
+                self._Vector2.$new(
+                  buttonSettings.position[0],
+                  buttonSettings.position[1]
+                )
+              );
+
+              self.buttons[button_slug].RectTransform.base.set_localScale(
+                self._Vector3.$new(0.75, 0.75, 1)
+              );
+
+              PogoUtils_1.PogoUtils.buttons.addButton({
+                id: buttonSettings.action,
+                callback: () =>
+                  self.runActionOnSelectedFriends(buttonSettings.action),
+                instance: self.buttons[button_slug].Button.$instance.toString(),
+              });
+            }
+          });
+        },
+      });
+
+    ditto_1.default
+      .use("Niantic.Holoholo.Social.UI.FriendPickerCellView")
+      .SetTrainerName.attach({
+        onEnter(args) {
+          if (!args[1]) {
+            this.trainerNickname.m_Text = "";
+          }
+        },
+      });
+
+    ditto_1.default
+      .use("Niantic.Holoholo.Social.UI.BaseFriendsListPage")
+      .AddFriendshipLevelWidget.attach({
+        onEnter(args) {
+          this._friendPickerCellView =
+            args[0].$className == "FriendsListPageCellView"
+              ? args[0].base
+              : args[0];
+
+          this._friendshipLevelDataProto = args[1];
+        },
+        onLeave() {
+          if (!this._friendshipLevelDataProto) {
+            return;
+          }
+
+          const CurrentPoints = this.friendshipLevelService.CumulativePoints(
+            this._friendshipLevelDataProto
+          );
+
+          const trainerNicknameGo =
+            this._friendPickerCellView.trainerNickname.base.base.base.base.base.base.get_gameObject();
+
+          const trainerNickname =
+            this._friendPickerCellView.trainerNickname.m_Text;
+
+          const newNick = `<color=#ff0000>a& </color><color=#093649>${CurrentPoints} ${
+            CurrentPoints < 90 ? "/ 90 " : ""
+          }${trainerNickname ? `\u2022 ${trainerNickname}` : ""}</color>`;
+
+          if (!trainerNickname) {
+            trainerNicknameGo.SetActive(true);
+          }
+
+          this._friendPickerCellView.trainerNickname.set_text(newNick);
+        },
+      });
+  }
+  runActionOnSelectedFriends(action) {
+    let title;
+    let body;
+    let buttons;
+    info(`[MassGift] Running action: ${action}`, "green");
+    action === "open-gifts"
+      ? ((title = I18n_1.default.getText(
+          "modals.instantGiftV2.openGift_title",
+          { totalFriends: Object.keys(this.selectedFriends).length }
+        )),
+        (body = I18n_1.default.getText("modals.instantGiftV2.openGift_body")),
+        (buttons = [
+          {
+            name: I18n_1.default.getText(
+              "modals.instantGiftV2.openGift_button"
+            ),
+            eventType: PogoUtils_1.ButtonEvents.BUTTON_EVENT_TYPE_OK,
+            callback: () => this.openGifts(),
+          },
+        ]))
+      : action === "send-gifts"
+      ? ((title = I18n_1.default.getText(
+          "modals.instantGiftV2.sendGift_title",
+          { totalFriends: Object.keys(this.selectedFriends).length }
+        )),
+        (body = I18n_1.default.getText("modals.instantGiftV2.sendGift_body")),
+        (buttons = [
+          {
+            name: I18n_1.default.getText(
+              "modals.instantGiftV2.sendGift_button"
+            ),
+            eventType: PogoUtils_1.ButtonEvents.BUTTON_EVENT_TYPE_OPTION_A,
+            callback: () => this.sendGifts(false),
+          },
+        ]),
+        this.stickerService.value.AnyStickers() &&
+          buttons.push({
+            name: I18n_1.default.getText(
+              "modals.instantGiftV2.sendGift_button_sticker"
+            ),
+            eventType: PogoUtils_1.ButtonEvents.BUTTON_EVENT_TYPE_OPTION_B,
+            callback: () => this.sendGifts(true),
+          }))
+      : action === "del-friend"
+      ? ((title = I18n_1.default.getText(
+          "modals.instantGiftV2.delFriend_title",
+          { totalFriends: Object.keys(this.selectedFriends).length }
+        )),
+        (body = I18n_1.default.getText("modals.instantGiftV2.delFriend_body")),
+        (buttons = [
+          {
+            name: I18n_1.default.getText(
+              "modals.instantGiftV2.delFriend_button"
+            ),
+            eventType: PogoUtils_1.ButtonEvents.BUTTON_EVENT_TYPE_OK,
+            callback: async () => this.delFriends(),
+          },
+        ]))
+      : undefined;
+
+    if (buttons) {
+      buttons.push({
+        eventType: PogoUtils_1.ButtonEvents.BUTTON_EVENT_TYPE_CANCEL,
+        name: I18n_1.default.getText("common.cancel"),
+      });
+
+      PogoUtils_1.PogoUtils.showWarningModal(title, body, buttons);
+    }
+  }
+  disableChangedActions() {
+    info(color.yellow("[MassGift] Disabling changed actions..."));
+    this.friendsListChangedAction = this.friendsRpcService.FriendsListChanged;
+    this.friendRequestsChangedAction =
+      this.friendsRpcService.FriendRequestsChanged;
+    this.friendDetailsChangedAction =
+      this.friendsRpcService.FriendDetailsChanged;
+    this.friendsRpcService.FriendsListChanged = null;
+    this.friendsRpcService.FriendRequestsChanged = null;
+    this.friendsRpcService.FriendDetailsChanged = null;
+
+    ditto_1.default
+      .use("Niantic.Platform.Ditto.Plugin.DittoPlugin")
+      .Update.probe(() => {
+        this.loadingBlocker.set_active(true);
+      });
+  }
+  enableChangedActions() {
+    info(color.yellow("[MassGift] Enabling changed actions..."));
+    this.friendsRpcService.FriendsListChanged = this.friendsListChangedAction;
+    this.friendsRpcService.FriendRequestsChanged =
+      this.friendRequestsChangedAction;
+    this.friendsRpcService.FriendDetailsChanged =
+      this.friendDetailsChangedAction;
+
+    ditto_1.default
+      .use("Niantic.Platform.Ditto.Plugin.DittoPlugin")
+      .Update.probe(() => {
+        this.resetSelectedFriends();
+        this.loadingBlocker.set_active(false);
+        this.friendsRpcService.OnFriendsListUpdated();
+      });
+  }
+  toggleActionButtons(show, checkPlayerChange = false) {
+    const playerChange = !!checkPlayerChange && this.checkPlayerChange();
+
+    info(
+      color.yellow(
+        `[MassGift] Toggle action buttons: ${show ? "show" : "hide"}`
+      )
+    );
+
+    info(
+      color.yellow(
+        `[MassGift] Check player change: ${checkPlayerChange ? "yes" : "no"}`
+      )
+    );
+
+    info(
+      color.yellow(`[MassGift] Player change: ${playerChange ? "yes" : "no"}`)
+    );
+
+    const self = this;
+    Object.keys(this.buttons).forEach((button_slug) => {
+      info(color.gray(`[MassGift] Loading Button: ${button_slug}`));
+
+      if (playerChange) {
+        info(color.green("[MassGift] Clearing button"));
+        self.buttons[button_slug].GameObject = undefined;
+      } else {
+        info(color.yellow("[MassGift] Button loading"));
+
+        self.buttons[button_slug].GameObject != null &&
+          (self.buttons[button_slug].GameObject.set_active(show),
+          (self.buttons[button_slug].Button.m_OnClick = null));
+
+        info(color.green("[MassGift] Button loaded"));
+      }
+    });
+  }
+  async openGifts() {
+    let _resultGift$items_;
+    this.disableChangedActions();
+    try {
+      info(
+        color.yellow(
+          `[MassGift] Creating postcards and opening gifts for ${
+            Object.keys(this.selectedFriends).length
+          } friends...`
+        )
+      );
+
+      info(
+        `[MassGift] Selected Friends ${JSON.stringify(
+          Object.keys(this.selectedFriends)
+        )}`
+      );
+
+      let hittedDailyLimit = false;
+      for (const friendId in this.selectedFriends) {
+        if (hittedDailyLimit) {
+          info(
+            color.yellow("[MassGift] Hitted daily limit, stopping actions...")
+          );
+          break;
+        }
+        info(`[MassGift] Getting friend giftbox details for ${friendId}`);
+        const friend_gifts = this.friendsRpcService.GetGiftboxDetails(friendId);
+        if (friend_gifts.count == 0) {
+          throw new Error(
+            `[MassGift] Friend gift from ${friendId} not found`,
+            "red"
+          );
+        }
+        const friend_gift = friend_gifts.array[0];
+
+        const resultPostcard = await withRetry(
+          () => {
+            info(`[MassGift] Creating postcard for ${friendId}...`);
+            const resultPostcardPromise =
+              this.postcardService.value.CreatePostcard(
+                friend_gift,
+                null,
+                null
+              );
+
+            info(
+              `[MassGift] Waiting for postcard creation of gift from ${friendId}...`
+            );
+
+            return PogoUtils_1.PogoUtils.waitUntilComplete(
+              resultPostcardPromise
+            );
+          },
+          10,
+          500
+        );
+
+        info(
+          color.green(
+            `[MassGift] Friend postcard from ${friendId}: ${resultPostcard.result_}`
+          )
+        );
+
+        switch (resultPostcard.result_) {
+          case this.POSTCARD_SUCCESS: {
+            const postcardID = resultPostcard.postcard_.postcardId_;
+            info(
+              color.green(
+                `[MassGift] Created postcard for ${friendId}: ${postcardID}`
+              )
+            );
+
+            const generic = ditto_1.default.use(
+              "System.Collections.Generic.List`1"
+            );
+
+            const inflated = generic.typeof.MakeGenericType([
+              ditto_1.default.use("System.String").typeof,
+            ]);
+
+            const constructed = inflated.CreateInstanceDefaultCtor(
+              false,
+              false,
+              false,
+              false,
+              null
+            );
+
+            constructed.Add(postcardID);
+
+            info(
+              color.yellow(
+                `[MassGift] Removing created postcard with ID: ${postcardID}`
+              )
+            );
+
+            const resultPostcardDeletePromise =
+              this.postcardService.value.DeletePostcards(constructed);
+            PogoUtils_1.PogoUtils.waitUntilComplete(resultPostcardDeletePromise)
+              .then((resultPostcardDelete) => {
+                info(
+                  color.green(
+                    `[MassGift] Postcard ${postcardID} delete status: ${resultPostcardDelete.result_}`
+                  )
+                );
+              })
+              .catch((e) => {
+                error(
+                  `[MassGift] Error deleting postcard ${postcardID} for gift from ${friendId} after creating it:\n${e.stack}`
+                );
+              });
+            break;
+          }
+          case this.POSTCARD_ERROR_ALREADY_CREATED: {
+            info(color.yellow("[MassGift] Postcard already created"));
+            break;
+          }
+          case this.POSTCARD_ERROR_INVENTORY_FULL: {
+            info(color.yellow("[MassGift] Postcard inventory full"));
+            break;
+          }
+          case this.POSTCARD_ERROR_RATE_LIMITED: {
+            info(color.yellow("[MassGift] Postcard rate limit"));
+            break;
+          }
+          case this.POSTCARD_INVENTORY_DAILY_BUTTERFLY_LIMIT: {
+            info(color.yellow("[MassGift] Postcard daily limit"));
+            break;
+          }
+          default: {
+            info(
+              color.yellow(
+                `[MassGift] Unknown postcard result: ${resultPostcard.result_}`
+              )
+            );
+          }
+        }
+
+        const resultGift = await withRetry(
+          () => {
+            info(`[MassGift] Opening gift from ${friendId}...`);
+            const resultGiftPromise =
+              this.friendsRpcService.giftingRpcService.OpenGift(
+                friend_gift.giftboxId_,
+                friendId,
+                friendId
+              );
+
+            info(
+              `[MassGift] Waiting for opening of friend gift from ${friendId}...`
+            );
+
+            return PogoUtils_1.PogoUtils.waitUntilComplete(resultGiftPromise);
+          },
+          10,
+          500
+        );
+
+        info(
+          color.green(
+            `[MassGift] Friend gift from ${friendId}: ${resultGift.result_}`
+          )
+        );
+
+        switch (resultGift.result_) {
+          case this.OPEN_GIFT_RESULT_SUCCESS: {
+            info(`[MassGift] Opened gift from ${friendId}!`);
+            const loot =
+              null == (_resultGift$items_ = resultGift.items_) ||
+              _resultGift$items_.lootItem_;
+            if (!loot) {
+              break;
+            }
+            loot.array.forEach((lootItemProto) => {
+              if (lootItemProto) {
+                switch (lootItemProto.typeCase_) {
+                  case this.LOOT_ITEM: {
+                    RewardItem(
+                      lootItemProto.type_.m_value,
+                      lootItemProto.count_
+                    );
+                    break;
+                  }
+                  case this.LOOT_STARDUST: {
+                    RewardItemStardust(lootItemProto.count_);
+                    break;
+                  }
+                  case this.LOOT_POKEMON_EGG: {
+                    const eggSpriteRequest =
+                      this.eggAssetLookup.value.GetEggSprite(7);
+                    PogoUtils_1.PogoUtils.waitUntilComplete(
+                      eggSpriteRequest
+                    ).then((eggSprite) => {
+                      RewardItemWithSprite(
+                        eggSprite,
+                        eggSpriteRequest,
+                        I18n_1.default.unity.getText("inventory_egg"),
+                        1
+                      );
+                    });
+                    break;
+                  }
+                  default: {
+                    warn(`Unknown loot type: ${lootItemProto.typeCase_}`);
+                  }
+                }
+              }
+            });
+            break;
+          }
+          case this.OPEN_GIFT_RESULT_ERROR_PLAYER_LIMIT_REACHED: {
+            info(
+              color.yellow(
+                `[MassGift] Daily limit reached when opening friend gift ${friendId}`
+              )
+            );
+
+            if (!hittedDailyLimit) {
+              hittedDailyLimit = true;
+              oneLine(I18n_1.default.getText("toast.instantGiftV2.openLimit"));
+            }
+
+            break;
+          }
+          case this.OPEN_GIFT_RESULT_ERROR_PLAYER_BAG_FULL: {
+            info(
+              color.yellow(
+                `[MassGift] User inventory is full when opening friend gift ${friendId}`
+              )
+            );
+
+            oneLine(I18n_1.default.getText("toast.instantGiftV2.bagFull"));
+
+            break;
+          }
+          case this.OPEN_GIFT_RESULT_ERROR_GIFT_DOES_NOT_EXIST: {
+            info(
+              color.yellow(
+                `[MassGift] Gift from ${friendId} doesn't exist or has already been collected`
+              )
+            );
+
+            oneLine(I18n_1.default.getText("toast.instantGiftV2.giftNotExist"));
+
+            break;
+          }
+          default: {
+            info(
+              color.yellow(
+                `[MassGift] Unknown open gift result: ${resultGift.result_}`
+              )
+            );
+          }
+        }
+      }
+      info(color.yellow("[MassGift] Finished opening all gifts!"));
+    } catch (e) {
+      error(`[MassGift] Error when opening gifts:\n${e.stack}`);
+    } finally {
+      this.enableChangedActions();
+    }
+  }
+  async sendGifts(withSticker = false) {
+    const selectedFriendsKeys = Object.keys(this.selectedFriends);
+    info(
+      `[MassGift] Sending gift(s) to ${selectedFriendsKeys.length} friend(s), with stickers? ${withSticker}`
+    );
+    const giftsRaw = this.giftingService.get_GiftsInInventory();
+
+    const gifts = giftsRaw.array.filter((gift) => gift.receiverId_.length == 0);
+
+    info(`[MassGift] Gifts in inventory: ${gifts.length}`);
+
+    if (gifts.length == 0) {
+      oneLine(I18n_1.default.getText("toast.instantGiftV2.noHaveGifts"));
+
+      return void info(color.yellow("[MassGift] No gifts to send"));
+    }
+
+    this.disableChangedActions();
+    try {
+      const loops = Math.min(gifts.length, selectedFriendsKeys.length);
+      info(color.green(`[MassGift] gifts: ${gifts.length} loops: ${loops}`));
+      let stickerList = false;
+
+      if (withSticker) {
+        stickerList = this.stickerService.value.GetStickerInventory(false);
+        stickerList && (stickerList = stickerList._items);
+      }
+
+      for (let current = 0; current < loops; current++) {
+        const gifts_current = gifts[current];
+        const selectedFriendsKeys_current = selectedFriendsKeys[current];
+        let sticker = null;
+
+        if (withSticker && current < stickerList.length) {
+          sticker = stickerList[current];
+        }
+
+        const resultSendGift = await withRetry(
+          () => {
+            info(
+              color.green(
+                `[MassGift] Sending gift ${gifts_current.giftboxId_} to friend ${selectedFriendsKeys_current}` +
+                  (withSticker ? " with sticker" : "")
+              )
+            );
+            const sendGiftPromise =
+              this.friendsRpcService.giftingRpcService.SendGift(
+                gifts_current.giftboxId_,
+                selectedFriendsKeys_current,
+                selectedFriendsKeys_current,
+                sticker
+              );
+
+            info(
+              `[MassGift] Waiting for opening of friend gift from ${selectedFriendsKeys_current}...`
+            );
+
+            return PogoUtils_1.PogoUtils.waitUntilComplete(sendGiftPromise);
+          },
+          10,
+          500
+        );
+        info(
+          `[MassGift] Gift ${gifts_current.giftboxId_} result: ${resultSendGift.result_}` +
+            (withSticker ? " with sticker" : "")
+        );
+      }
+      info(
+        color.green(
+          "[MassGift] Sent gifts and reverted delegates. Updating friends list with success."
+        )
+      );
+    } catch (e) {
+      error(`[MassGift] Friend sending gift opening error:\n${e.stack}`);
+    } finally {
+      this.enableChangedActions();
+    }
+  }
+  async delFriends() {
+    info(
+      color.green(
+        `[MassGift] Removing ${
+          Object.keys(this.selectedFriends).length
+        } friend(s)`
+      )
+    );
+
+    this.disableChangedActions();
+    try {
+      for (const friendId in this.selectedFriends) {
+        const resultDelFriend = await withRetry(
+          () => {
+            const removeFriendPromise =
+              this.friendsRpcService.RemoveFriend(friendId);
+            return PogoUtils_1.PogoUtils.waitUntilComplete(removeFriendPromise);
+          },
+          10,
+          500
+        );
+        info(
+          `[MassGift] Delete Friend ${friendId} result: ${resultDelFriend.result_}`
+        );
+      }
+      info(
+        color.green(
+          "[MassGift] Delete friend and reverted delegates. Updating friends list with success."
+        )
+      );
+    } catch (e) {
+      error(`[MassGift] Friend deletion error:\n${e.stack}`);
+    } finally {
+      this.enableChangedActions();
+    }
+  }
+  checkPlayerChange() {
+    info(color.yellow("[MassGift] Checking if the player has changed"));
+    const playerName = UserData_1.default.username;
+    return (
+      playerName != this.playerName &&
+      (info(
+        color.yellow(
+          `[MassGift] Player has changed: "${this.playerName}" �! "${playerName}"`
+        )
+      ),
+      (this.playerName = playerName),
+      true)
+    );
+  }
+  resetSelectedFriends(updateFriendCount = true, checkPlayerChange = false) {
+    info(color.yellow("[MassGift] Resetting selected friends"));
+    this.selectedFriends = {};
+    this.toggleActionButtons(false, checkPlayerChange);
+
+    if (updateFriendCount && this.friendCountText !== null) {
+      info("[MassGift] Resetting selected friends text");
+      this.friendCountText.set_text(`0/${this.friendCount}`);
+    }
+
+    info("[MassGift] Selected friends reset");
+  }
+}
+export default MassGift;

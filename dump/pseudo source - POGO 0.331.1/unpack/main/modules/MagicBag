@@ -1,0 +1,324 @@
+import { oneLine } from "../utils/Toast";
+import Misc_1 from "../utils/Misc";
+import PogoUtils_1 from "../utils/PogoUtils";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const ObjectInstance_1 = __importDefault(require("../utils/ObjectInstance"));
+const I18n_1 = __importDefault(require("../utils/I18n"));
+const UserData_1 = __importDefault(require("../utils/UserData"));
+const PersistentPrefs_1 = __importDefault(require("../utils/PersistentPrefs"));
+const UnityUtils_1 = __importDefault(require("../utils/UnityUtils"));
+const BUTTON_EVENT_TYPE_OK = 1;
+const BUTTON_EVENT_TYPE_CANCEL = 2;
+const BUTTON_EVENT_TYPE_ALT_OPTION = 3;
+const BUTTON_EVENT_TYPE_OPTION_A = 4;
+const BUTTON_EVENT_TYPE_OPTION_B = 5;
+const BUTTON_EVENT_TYPE_OPTION_C = 6;
+const BUTTON_EVENT_TYPE_OPTION_D = 7;
+const BUTTON_EVENT_TYPE_OPTION_E = 8;
+class MagicBag extends ModuleBase_1.default {
+  constructor() {
+    super();
+    UserData_1.default.itemSettings = {};
+    this.cachedItemNames = {};
+    this.selectedItem = null;
+    this.currentSettingsString = "";
+    this.currentTotalItems = 0;
+    this.previousTime = 0;
+    this.isRecyclerDialog = false;
+    this.ModalButton = undefined;
+    this.itemBagInstance = undefined;
+    this.playerservice = undefined;
+  }
+  init() {
+    super.init();
+    this.itemBagInstance = new ObjectInstance_1.default("ItemBagImpl");
+
+    this.playerservice = new ObjectInstance_1.default(
+      "Niantic.Holoholo.PlayerService"
+    );
+
+    this.ModalButton = ditto_1.default.use("ModalButton");
+    const self = this;
+    const ItemBagImpl = ditto_1.default.use("ItemBagImpl");
+
+    if (!this.isEnabled("Bot")) {
+      ItemBagImpl.HandleOnInventoryUpdate.attach({
+        onLeave() {
+          const itemBagInstanceName = self.itemBagInstance
+            .getCurrentValue()
+            .toString();
+
+          if (itemBagInstanceName != this.toString()) {
+            self.itemBagInstance.value = this;
+          }
+
+          const totalItems = this.GetTotalItems();
+
+          if (self.currentTotalItems < totalItems) {
+            info(
+              color.yellow(
+                `There are more items in the bag now! ${self.currentTotalItems} -> ${totalItems}. Performing a recycling cycle!`
+              )
+            );
+
+            self.itemRecycler();
+          }
+
+          self.currentTotalItems = totalItems;
+        },
+      });
+    }
+
+    const ItemInventoryGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.UI.Items.ItemInventoryGuiController"
+    );
+    ItemInventoryGuiController.ItemRecycleSelected.attach({
+      onEnter(args) {
+        self.selectedItem = args[1].item.item;
+      },
+    });
+    const NumericalPickerDialog = ditto_1.default.use(
+      "Niantic.Holoholo.UI.NumericalPickerDialog"
+    );
+
+    NumericalPickerDialog.Initialize.overload(
+      "string",
+      "string",
+      "string",
+      "UnityEngine.Sprite",
+      "int",
+      "int",
+      "int",
+      "UserResponsePromise_ModalEvent_int_",
+      "IModalButton[]"
+    ).attach({
+      onEnter(args) {
+        const [
+          messagePrefix,
+          messageSuffix,
+          ,
+          ,
+          startingValue,
+          minValue,
+          maxValue,
+          ,
+          buttons,
+        ] = args;
+
+        self.isRecyclerDialog = false;
+        const newButtons = [];
+        for (let i = 0; i < buttons.length; i++) {
+          newButtons.push(buttons[i]);
+        }
+        if (startingValue == 0 && minValue == 0 && maxValue == 999) {
+        } else if (messageSuffix && Misc_1.ItemTable[self.selectedItem]) {
+          const eventType = PogoUtils_1.ButtonEvents.BUTTON_EVENT_TYPE_OPTION_D;
+
+          const cartButton = self.ModalButton.$new(
+            eventType,
+            I18n_1.default.getText("modals.itemCleaner.setupRecycleBtn"),
+            UnityUtils_1.default.makeGenericNullable("ButtonType")
+          );
+
+          const cbs = {};
+
+          cbs[eventType] = () => self.showSecondModalSettings();
+
+          debug(
+            color.green.bold(
+              `Setting modal callback holder: "${messagePrefix} ${messageSuffix}"`
+            )
+          );
+
+          PogoUtils_1.PogoUtils.setModalCbHolder(
+            `${messagePrefix} ${messageSuffix}`,
+            cbs
+          );
+
+          newButtons.push(cartButton);
+        }
+        args[8] = newButtons;
+        this.title.set_horizontalOverflow(1);
+      },
+    });
+
+    NumericalPickerDialog.PointerDown.replace(function (value) {
+      if (self.isRecyclerDialog) {
+        const currentCount = self.itemBagInstance.value.GetItemCount(
+          self.selectedItem
+        );
+
+        if (-1 === value && this.value === 0) {
+          currentCount && this.set_Value(currentCount);
+          value = 0;
+        }
+      }
+      this.PointerDown(value);
+    });
+
+    ItemBagImpl.HasItem.replace(function (itemType) {
+      if (2000 /* 2e3 */ < Date.now() - self.previousTime) {
+        this.GetTotalItems();
+      }
+
+      self.previousTime = Date.now();
+      return this.HasItem(itemType);
+    });
+  }
+  showSecondModalSettings() {
+    const buttons = [
+      {
+        eventType: PogoUtils_1.ButtonEvents.BUTTON_EVENT_TYPE_OPTION_C,
+        name: I18n_1.default.getText("common.confirm"),
+        callback: (value) => {
+          info(
+            color.green.bold(
+              `Saving your settings ${this.selectedItem} is ${value}...`
+            )
+          );
+
+          PersistentPrefs_1.default.set(
+            `${UserData_1.default.username}_${
+              Misc_1.ItemTable[this.selectedItem]
+            }`,
+            value,
+            `${UserData_1.default.username}_MagicBag`
+          );
+
+          UserData_1.default.itemSettings[this.selectedItem] = value;
+          this.itemRecycler(this.selectedItem);
+        },
+      },
+      {
+        eventType: PogoUtils_1.ButtonEvents.BUTTON_EVENT_TYPE_OPTION_E,
+        name: `${I18n_1.default.getText("common.add")} 50`,
+        callback: (value, instance) => {
+          instance.set_Value(value + 50);
+          return true;
+        },
+      },
+      {
+        eventType: PogoUtils_1.ButtonEvents.BUTTON_EVENT_TYPE_OPTION_B,
+        name: I18n_1.default.getText("common.settings"),
+        callback: () => this.showSettingsModalDialog(),
+      },
+      {
+        eventType: PogoUtils_1.ButtonEvents.BUTTON_EVENT_TYPE_CANCEL,
+        name: I18n_1.default.getText("common.cancel"),
+      },
+    ];
+
+    const previousValue =
+      this.selectedItem in UserData_1.default.itemSettings
+        ? UserData_1.default.itemSettings[this.selectedItem]
+        : 1;
+
+    PogoUtils_1.PogoUtils.ShowNumericalPicker(
+      I18n_1.default.getText("modals.itemCleaner.setMaxAmount"),
+      previousValue,
+      0,
+      this.playerservice.value.get_MaxItems(),
+      buttons
+    );
+
+    this.isRecyclerDialog = true;
+  }
+  showSettingsModalDialog() {
+    const buttons = [
+      {
+        name: I18n_1.default.getText("modals.itemCleaner.gotIt"),
+        eventType: PogoUtils_1.ButtonEvents.BUTTON_EVENT_TYPE_OK,
+      },
+      {
+        name: I18n_1.default.getText("modals.itemCleaner.clearSettings"),
+        eventType: PogoUtils_1.ButtonEvents.BUTTON_EVENT_TYPE_OPTION_A,
+        callback: () => this.resetAllSettings(),
+      },
+    ];
+    let totalcount = 0;
+    if (Object.keys(UserData_1.default.itemSettings).length !== 0) {
+      for (const count of Object.values(UserData_1.default.itemSettings)) {
+        totalcount += count;
+      }
+    }
+    PogoUtils_1.PogoUtils.showWarningModal(
+      I18n_1.default.getText("modals.itemCleaner.currentSetting"),
+      `${
+        this.convertObjectToString(UserData_1.default.itemSettings) +
+        `\n${I18n_1.default.getText("common.count")}: ` +
+        totalcount
+      }/${this.playerservice.value.get_MaxItems()}`,
+      buttons
+    );
+  }
+  convertObjectToString(itemMap) {
+    const myArray = [];
+    for (const [key, value] of Object.entries(itemMap)) {
+      myArray.push(
+        `${I18n_1.default.unity.getItemNameFromId(
+          Number(key)
+        )} ${String.fromCodePoint(8594)} ${value}`
+      );
+    }
+    return myArray.join("\n");
+  }
+  resetAllSettings() {
+    if (Object.keys(UserData_1.default.itemSettings).length !== 0) {
+      for (const itemId of Object.keys(UserData_1.default.itemSettings)) {
+        PersistentPrefs_1.default.del(
+          `${UserData_1.default.username}_${Misc_1.ItemTable[itemId]}`,
+          `${UserData_1.default.username}_MagicBag`
+        );
+      }
+      Object.keys(UserData_1.default.itemSettings).forEach((key) => {
+        delete UserData_1.default.itemSettings[key];
+      });
+    }
+
+    oneLine(I18n_1.default.getText("toast.itemCleaner.settingReset"));
+
+    this.showSettingsModalDialog();
+  }
+  getTrashItemCount(item) {
+    const currentItemCount = this.itemBagInstance.value.GetItemCount(
+      parseInt(item)
+    );
+    return Math.max(
+      0,
+      currentItemCount - UserData_1.default.itemSettings[item]
+    );
+  }
+  itemRecycler(singleItem = undefined) {
+    if (!UserData_1.default.username) {
+      return false;
+    }
+    if (singleItem && !(singleItem in UserData_1.default.itemSettings)) {
+      return false;
+    }
+    let itemMap = UserData_1.default.itemSettings;
+
+    if (singleItem) {
+      itemMap = {};
+      itemMap[singleItem] = Misc_1.ItemTable[singleItem];
+    }
+
+    for (const item of Object.keys(itemMap)) {
+      const trashItemCount = this.getTrashItemCount(item);
+
+      if (trashItemCount) {
+        info(
+          color.blue.bold(
+            `Recycled ${trashItemCount}x ${Misc_1.ItemTable[item]}`
+          )
+        );
+
+        this.itemBagInstance.value.RecycleItem(parseInt(item), trashItemCount);
+      }
+    }
+    return true;
+  }
+}
+export default MagicBag;

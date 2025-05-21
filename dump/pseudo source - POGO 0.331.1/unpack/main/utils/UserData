@@ -1,0 +1,162 @@
+import Misc_1, { hashCode } from "../utils/Misc";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ObjectInstance_1 = __importDefault(require("./ObjectInstance"));
+const PersistentPrefs_1 = __importDefault(require("../utils/PersistentPrefs"));
+let playerServiceInstance;
+let helpshiftServiceInstance;
+ditto_1.default.onInitialize(() => {
+  playerServiceInstance = new ObjectInstance_1.default(
+    "Niantic.Holoholo.PlayerService",
+    "RequestPlayerFromServer"
+  );
+});
+class UserData {
+  constructor() {
+    this.tier = undefined;
+    this._userchangecb = [];
+    this._gameversioncb = [];
+    this._onLogoutCb = [];
+    this.enabledModules = [];
+    this.availableModules = [];
+    this._username = "";
+    this._gameVersion = "";
+    this._testGroup = 0;
+    this._maxItems = 0;
+    this._experiments = {};
+    this.itemSettings = {};
+    this.needsAttest = true;
+  }
+  getExperimentGroup(experiment) {
+    return (
+      this._experiments[experiment] === undefined ||
+      this._experiments[experiment]
+    );
+  }
+  setExperimentGroup(experiment, group) {
+    if (this._experiments[experiment] === undefined) {
+      this._experiments[experiment] =
+        group === true ? "testing" : group === false ? "control" : group;
+      return this._experiments[experiment];
+    }
+    if (this._experiments[experiment] !== group) {
+      throw new Error(
+        `Experiment ${experiment} already set to ${this._experiments[experiment]}`
+      );
+    } else {
+      if (group === undefined) {
+        delete this._experiments[experiment];
+      }
+    }
+  }
+  get email() {
+    return null;
+  }
+  set email(value) {
+    this._email = value;
+  }
+  get username() {
+    if (!this._username) {
+      let _playerServiceInstanc;
+      this.username =
+        null == (_playerServiceInstanc = playerServiceInstance) ||
+        _playerServiceInstanc.value.get_PlayerName();
+    }
+    return this._username;
+  }
+  set username(value) {
+    if (this._username !== value) {
+      this._username = value;
+      this.onUserChange(value);
+      this._testGroup = (hashCode(value) % 2) + 1;
+      ditto_1.default.Telemetry.user = value;
+    }
+  }
+  get gameVersion() {
+    if (!this._gameVersion) {
+      this._gameVersion = ditto_1.default
+        .use("UnityEngine.Application")
+        .get_version();
+    }
+
+    return this._gameVersion;
+  }
+  set gameVersion(value) {
+    this._gameVersion = value;
+  }
+  get groupName() {
+    if (!this._testGroup) {
+      let _playerServiceInstanc2;
+      this.username =
+        null == (_playerServiceInstanc2 = playerServiceInstance) ||
+        _playerServiceInstanc2.value.get_PlayerName();
+    }
+    return this._testGroup == 1
+      ? "control"
+      : this._testGroup == 2
+      ? "testing"
+      : "no_group";
+  }
+  get maxItems() {
+    if (!this._maxItems) {
+      let _playerServiceInstanc3;
+      this._maxItems =
+        null == (_playerServiceInstanc3 = playerServiceInstance) ||
+        _playerServiceInstanc3.value.get_MaxItems();
+    }
+    return this._maxItems;
+  }
+  populateItemSettings() {
+    info("Trying to populate item map for user", this._username);
+    this.itemSettings = {};
+    for (const [itemId, itemName] of Object.entries(Misc_1.ItemTable)) {
+      const key = `${this._username}_${itemName}`;
+      if (PersistentPrefs_1.default.has(key, `${this.username}_MagicBag`)) {
+        const itemValue = PersistentPrefs_1.default.get(
+          key,
+          99999,
+          `${this.username}_MagicBag`
+        );
+        this.itemSettings[itemId] = itemValue;
+        info(`Added ${itemName} to item map`);
+      }
+    }
+  }
+  handleAccountChange() {
+    this._username = "";
+    this._testGroup = 0;
+    this._maxItems = 0;
+    this.onLogout();
+  }
+  setCallbackOnGameVersion(callback) {
+    this._gameversioncb.push(callback);
+  }
+  onValidGameVersion(gameVersion) {
+    this._gameversioncb.forEach((cb) => {
+      cb(gameVersion);
+    });
+  }
+  setCallbackForOnUserChange(callback) {
+    this._userchangecb.push(callback);
+  }
+  onUserChange(username) {
+    this.populateItemSettings();
+
+    this._userchangecb.forEach((cb) => {
+      cb(username);
+    });
+  }
+  setOnLogoutCallback(cb) {
+    this._onLogoutCb.push(cb);
+  }
+  onLogout() {
+    this._onLogoutCb.forEach((cb) => {
+      cb();
+    });
+
+    this.needsAttest = true;
+  }
+}
+const userData = new UserData();
+export default userData;

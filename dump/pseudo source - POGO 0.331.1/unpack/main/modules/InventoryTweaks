@@ -1,0 +1,485 @@
+(function (setImmediate) {
+  (() => {
+    const __importDefault = (mod) =>
+      mod && mod.__esModule ? mod : { default: mod };
+    const ditto_1 = __importDefault(require("@pkmd/ditto"));
+    const I18n_1 = __importDefault(require("../utils/I18n"));
+    const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+    const ObjectInstance_1 = __importDefault(
+      require("../utils/ObjectInstance")
+    );
+    const PogoUtils_1 = require("../utils/PogoUtils");
+    const UserData_1 = __importDefault(require("./../utils/UserData"));
+
+    const RemoveBuddy_1 = __importDefault(
+      require("../../development/cosmetic/RemoveBuddy")
+    );
+
+    const VIP_TIERS = ["explorer", "beta", "extra", "staff", "dev", "bot"];
+    class InventoryTweaks extends ModuleBase_1.default {
+      constructor() {
+        super();
+        this.selectedShadowPokemon = [];
+        this.selectedMonsToEvolve = [];
+
+        this.purifyAllButton = {
+          rectTransform: null,
+          gameObject: null,
+          text: null,
+        };
+
+        this.evolveAllButton = {
+          rectTransform: null,
+          gameObject: null,
+          text: null,
+        };
+
+        this.pokemonBagInstance = undefined;
+        this.itemBagInstance = undefined;
+        this.pokemonInventoryMultiSelectInstance = undefined;
+
+        this.dittoPlugin = ditto_1.default.use(
+          "Niantic.Platform.Ditto.Plugin.DittoPlugin"
+        );
+
+        this.unlock_more_functionality = VIP_TIERS.includes(
+          UserData_1.default.tier
+        );
+      }
+      init() {
+        super.init();
+
+        this.pokemonBagInstance = new ObjectInstance_1.default(
+          "PokemonBagImpl"
+        );
+
+        this.itemBagInstance = new ObjectInstance_1.default("ItemBagImpl");
+
+        this.pokemonInventoryMultiSelectInstance = new ObjectInstance_1.default(
+          "Niantic.Holoholo.UI.PokemonInventoryMultiSelect"
+        );
+
+        const self = this;
+
+        const PokemonInventoryListLineTransferAllSelected = ditto_1.default.use(
+          "Niantic.Holoholo.UI.PokemonInventoryListLine/TransferAllSelected"
+        );
+
+        PokemonInventoryListLineTransferAllSelected[
+          "<TransferAllSelected>b__0"
+        ].attach({
+          onEnter(args) {
+            this.pokemonProto = args[0];
+            this.displayProto = this.pokemonProto.pokemonDisplay_;
+            this.settingsProto = this.pokemonProto.get_settingsProto();
+          },
+          onLeave() {
+            const isUnknown = this.pokemonProto.pokemonId_ == 201;
+            const isBuddy = this.displayProto.pokemonBadge_;
+            const isFavorite = this.pokemonProto.favorite_;
+            const isLucky = this.pokemonProto.isLucky_;
+            const is3Move = this.pokemonProto.move3_;
+            const isTransferable = this.settingsProto.isTransferable_;
+            const isDefendingGym = this.pokemonProto.deployedFortId_;
+            return !(
+              !isTransferable ||
+              is3Move ||
+              is3Move ||
+              isBuddy ||
+              is3Move ||
+              isBuddy ||
+              isUnknown ||
+              is3Move ||
+              isBuddy ||
+              isUnknown ||
+              isFavorite ||
+              is3Move ||
+              isBuddy ||
+              isUnknown ||
+              isFavorite ||
+              isLucky ||
+              is3Move ||
+              isBuddy ||
+              isUnknown ||
+              isFavorite ||
+              isLucky ||
+              isDefendingGym
+            );
+          },
+        });
+        const PokemonInventoryMultiSelect = ditto_1.default.use(
+          "Niantic.Holoholo.UI.PokemonInventoryMultiSelect"
+        );
+
+        PokemonInventoryMultiSelect.IsSelectionDisabled.attach({
+          onEnter(args) {
+            this.pokemonProto = args[0];
+            this.displayProto = this.pokemonProto.pokemonDisplay_;
+            this.settingsProto = this.pokemonProto.get_settingsProto();
+          },
+          onLeave() {
+            const isUnknown = this.pokemonProto.pokemonId_ == 201;
+            const isBuddy = this.displayProto.pokemonBadge_;
+            const isFavorite = this.pokemonProto.favorite_;
+            const isLucky = this.pokemonProto.isLucky_;
+            const is3Move = this.pokemonProto.move3_;
+            const isTransferable = this.settingsProto.isTransferable_;
+            const isDefendingGym = this.pokemonProto.deployedFortId_;
+            return !!(
+              !isTransferable ||
+              is3Move ||
+              is3Move ||
+              isBuddy ||
+              is3Move ||
+              isBuddy ||
+              isUnknown ||
+              is3Move ||
+              isBuddy ||
+              isUnknown ||
+              isFavorite ||
+              is3Move ||
+              isBuddy ||
+              isUnknown ||
+              isFavorite ||
+              isLucky ||
+              is3Move ||
+              isBuddy ||
+              isUnknown ||
+              isFavorite ||
+              isLucky ||
+              isDefendingGym != ""
+            );
+          },
+        });
+
+        if (self.unlock_more_functionality) {
+          self.Text = ditto_1.default.use("UnityEngine.UI.Text");
+          self.Vector2 = ditto_1.default.use("UnityEngine.Vector2");
+          self.ObjectC = ditto_1.default.use("UnityEngine.Object");
+
+          PokemonInventoryMultiSelect.Initialize.attach({
+            onEnter() {
+              self.pokemonInventoryMultiSelectInstance.value = this;
+
+              const regularButtonsContainer =
+                this.regularTransferModeSettings.ButtonContainer.get_transform()
+                  .base;
+
+              const evolveAllButton = self.ObjectC.Instantiate(
+                this.tagButton,
+                regularButtonsContainer,
+                false
+              );
+
+              evolveAllButton.set_onClick(null);
+              const evolveAllButtonComponent =
+                evolveAllButton.base.base.base.base.base;
+              evolveAllButtonComponent.base.set_name("EvolveButton");
+              self.evolveAllButton.rectTransform =
+                evolveAllButtonComponent.get_transform();
+
+              self.evolveAllButton.rectTransform.set_offsetMin(
+                self.Vector2.$new(340, 120)
+              );
+
+              self.evolveAllButton.rectTransform.set_offsetMax(
+                self.Vector2.$new(-20, 250)
+              );
+
+              self.evolveAllButton.gameObject =
+                evolveAllButtonComponent.get_gameObject();
+              self.evolveAllButton.gameObject.SetActive(false);
+
+              self.evolveAllButton.text =
+                self.evolveAllButton.gameObject.GetComponentInChildren(
+                  self.Text.typeof,
+                  true
+                );
+
+              self.evolveAllButton.text.set_text(
+                I18n_1.default.unity.getText("pokemon_info_evolve_button")
+              );
+
+              PogoUtils_1.PogoUtils.buttons.addButton({
+                id: "evolveAll",
+                callback: () => self.confirmEvolveOrPurifyModal(true),
+                instance: evolveAllButton.$instance.toString(),
+              });
+
+              const purifyAllButton = self.ObjectC.Instantiate(
+                this.tagButton,
+                regularButtonsContainer,
+                false
+              );
+              purifyAllButton.set_onClick(null);
+              const purifyAllButtonComponent =
+                purifyAllButton.base.base.base.base.base;
+              purifyAllButtonComponent.base.set_name("PurifyButton");
+              self.purifyAllButton.rectTransform =
+                purifyAllButtonComponent.get_transform();
+
+              self.purifyAllButton.rectTransform.set_offsetMin(
+                self.Vector2.$new(340, 120)
+              );
+
+              self.purifyAllButton.rectTransform.set_offsetMax(
+                self.Vector2.$new(-20, 250)
+              );
+
+              self.purifyAllButton.gameObject =
+                purifyAllButtonComponent.get_gameObject();
+              self.purifyAllButton.gameObject.SetActive(false);
+
+              self.purifyAllButton.text =
+                self.purifyAllButton.gameObject.GetComponentInChildren(
+                  self.Text.typeof,
+                  true
+                );
+
+              self.purifyAllButton.text.set_text(
+                I18n_1.default.unity.getText("pokemon_info_purify_button")
+              );
+
+              PogoUtils_1.PogoUtils.buttons.addButton({
+                id: "purifyAll",
+                instance: purifyAllButton.$instance.toString(),
+                callback: () => self.confirmEvolveOrPurifyModal(),
+              });
+
+              const tagButtonGo =
+                this.tagButton.base.base.base.base.base.get_gameObject();
+              self.tagButtonRectTransform = tagButtonGo.get_transform();
+
+              self.tagButtonRectTransform.set_offsetMin(
+                self.Vector2.$new(20, 120)
+              );
+
+              self.tagButtonRectTransform.set_offsetMax(
+                self.Vector2.$new(-340, 250)
+              );
+            },
+          });
+
+          PokemonInventoryMultiSelect.SetMultiSelectCount.attach({
+            onLeave() {
+              let _this$pokemonPage;
+              let _this$pokemonPage$sel;
+              self.selectedMonsToEvolve = [];
+              self.selectedShadowPokemon = [];
+
+              if (null != this) {
+                if (null != (_this$pokemonPage = this.pokemonPage)) {
+                  if (
+                    null !=
+                    (_this$pokemonPage$sel = _this$pokemonPage.selectedPokemon)
+                  ) {
+                    _this$pokemonPage$sel.ToArray().forEach((pokemonProto) => {
+                      let _pokemonProto$pokemon;
+                      let _pokemonProto$cachedS;
+                      let _pokemonProto$cachedS2;
+
+                      if (
+                        1 ==
+                        (pokemonProto == null ||
+                          null ==
+                            (_pokemonProto$pokemon =
+                              pokemonProto.pokemonDisplay_) ||
+                          _pokemonProto$pokemon.alignment_)
+                      ) {
+                        self.selectedShadowPokemon.push(pokemonProto);
+                      }
+
+                      if (
+                        pokemonProto != null &&
+                        null !=
+                          (_pokemonProto$cachedS =
+                            pokemonProto.cachedSettingsProto) &&
+                        null !=
+                          (_pokemonProto$cachedS2 =
+                            _pokemonProto$cachedS.evolutionBranch_.array[0]) &&
+                        _pokemonProto$cachedS2.evolution_
+                      ) {
+                        self.selectedMonsToEvolve.push(pokemonProto);
+                      }
+                    });
+                  }
+                }
+              }
+
+              const selectedShadowPokemonLength =
+                self.selectedShadowPokemon.length;
+
+              const selectedMonsToEvolveLength =
+                self.selectedMonsToEvolve.length;
+
+              if (
+                selectedMonsToEvolveLength > 0 &&
+                selectedShadowPokemonLength > 0
+              ) {
+                self.evolveAllButton.gameObject.SetActive(true);
+                self.purifyAllButton.gameObject.SetActive(true);
+
+                self.tagButtonRectTransform.set_offsetMin(
+                  self.Vector2.$new(20, 120)
+                );
+
+                self.tagButtonRectTransform.set_offsetMax(
+                  self.Vector2.$new(-445, 250)
+                );
+
+                self.evolveAllButton.rectTransform.set_offsetMin(
+                  self.Vector2.$new(230, 120)
+                );
+
+                self.evolveAllButton.rectTransform.set_offsetMax(
+                  self.Vector2.$new(-230, 250)
+                );
+
+                self.evolveAllButton.text.set_text(
+                  `${I18n_1.default.unity.getText(
+                    "pokemon_info_evolve_button"
+                  )} (${selectedMonsToEvolveLength})`
+                );
+
+                self.purifyAllButton.rectTransform.set_offsetMin(
+                  self.Vector2.$new(445, 120)
+                );
+
+                self.purifyAllButton.rectTransform.set_offsetMax(
+                  self.Vector2.$new(-20, 250)
+                );
+
+                self.purifyAllButton.text.set_text(
+                  `${I18n_1.default.unity.getText(
+                    "pokemon_info_purify_button"
+                  )} (${selectedShadowPokemonLength})`
+                );
+              } else if (selectedMonsToEvolveLength > 0) {
+                self.evolveAllButton.gameObject.SetActive(true);
+                self.purifyAllButton.gameObject.SetActive(false);
+
+                self.tagButtonRectTransform.set_offsetMin(
+                  self.Vector2.$new(20, 120)
+                );
+
+                self.tagButtonRectTransform.set_offsetMax(
+                  self.Vector2.$new(-340, 250)
+                );
+
+                self.evolveAllButton.rectTransform.set_offsetMin(
+                  self.Vector2.$new(340, 120)
+                );
+
+                self.evolveAllButton.rectTransform.set_offsetMax(
+                  self.Vector2.$new(-20, 250)
+                );
+
+                self.evolveAllButton.text.set_text(
+                  `${I18n_1.default.unity.getText(
+                    "pokemon_info_evolve_button"
+                  )} (${selectedMonsToEvolveLength})`
+                );
+              } else if (selectedShadowPokemonLength > 0) {
+                self.evolveAllButton.gameObject.SetActive(false);
+                self.purifyAllButton.gameObject.SetActive(true);
+
+                self.tagButtonRectTransform.set_offsetMin(
+                  self.Vector2.$new(20, 120)
+                );
+
+                self.tagButtonRectTransform.set_offsetMax(
+                  self.Vector2.$new(-340, 250)
+                );
+
+                self.purifyAllButton.rectTransform.set_offsetMin(
+                  self.Vector2.$new(340, 120)
+                );
+
+                self.purifyAllButton.rectTransform.set_offsetMax(
+                  self.Vector2.$new(-20, 250)
+                );
+
+                self.purifyAllButton.text.set_text(
+                  `${I18n_1.default.unity.getText(
+                    "pokemon_info_purify_button"
+                  )} (${selectedShadowPokemonLength})`
+                );
+              } else {
+                self.evolveAllButton.gameObject.SetActive(false);
+                self.purifyAllButton.gameObject.SetActive(false);
+
+                self.tagButtonRectTransform.set_offsetMin(
+                  self.Vector2.$new(20, 120)
+                );
+
+                self.tagButtonRectTransform.set_offsetMax(
+                  self.Vector2.$new(-20, 250)
+                );
+              }
+            },
+          });
+
+          new RemoveBuddy_1.default().init();
+        }
+      }
+      confirmEvolveOrPurifyModal(isEvolve = false) {
+        const type = isEvolve ? "evolve" : "purify";
+        PogoUtils_1.PogoUtils.showWarningModal(
+          I18n_1.default.getText(`modals.inventoryTweaks.${type}Title`),
+          I18n_1.default.getText(`modals.inventoryTweaks.${type}Body`, {
+            number: isEvolve
+              ? this.selectedMonsToEvolve.length
+              : this.selectedShadowPokemon.length,
+          }),
+          [
+            {
+              name: I18n_1.default.getText("common.ok"),
+              eventType: PogoUtils_1.ButtonEvents.BUTTON_EVENT_TYPE_OK,
+              callback: isEvolve
+                ? () => this.evolvePokemon()
+                : () => this.purifyPokemon(),
+            },
+            {
+              name: I18n_1.default.getText("common.cancel"),
+              eventType: PogoUtils_1.ButtonEvents.BUTTON_EVENT_TYPE_CANCEL,
+            },
+          ]
+        );
+      }
+      purifyPokemon() {
+        this.pokemonInventoryMultiSelectInstance.value.ClickCancelMultiselect();
+
+        this.selectedShadowPokemon.forEach((pokemonProto) => {
+          setImmediate(() => {
+            this.dittoPlugin.Update.probe(() => {
+              this.pokemonBagInstance.value.PurifyPokemon(pokemonProto);
+              this.pokemonBagInstance.value.PokemonBagUpdated.Invoke(0);
+            });
+          });
+        });
+      }
+      evolvePokemon() {
+        this.pokemonInventoryMultiSelectInstance.value.ClickCancelMultiselect();
+
+        this.selectedMonsToEvolve.forEach((pokemonProto) => {
+          setImmediate(() => {
+            this.dittoPlugin.Update.probe(() => {
+              const evolvePokemonProto = ditto_1.default
+                .use("EvolvePokemonProto")
+                .$new();
+              evolvePokemonProto.pokemonId_ = pokemonProto.id_;
+
+              this.pokemonBagInstance.value.EvolvePokemon(
+                pokemonProto,
+                evolvePokemonProto
+              );
+
+              this.pokemonBagInstance.value.PokemonBagUpdated.Invoke(0);
+            });
+          });
+        });
+      }
+    }
+    exports.default = InventoryTweaks;
+  }).call(this);
+}).call(this, require("timers").setImmediate);

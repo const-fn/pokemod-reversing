@@ -1,0 +1,47 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+class PerfectedThrow extends ModuleBase_1.default {
+  init() {
+    super.init();
+    const EncounterPokemon = ditto_1.default.use(
+      "Niantic.Holoholo.Encounter.EncounterPokemon"
+    );
+    EncounterPokemon.SetCanPerformActions.attach({
+      onEnter(args) {
+        args[0] = false;
+      },
+    });
+    const Reticle = ditto_1.default.use("Niantic.Holoholo.Encounter.Reticle");
+
+    Reticle.get_NormalizedSize.replace(() => 0.13 * Math.random());
+
+    Reticle.ScreenPositionOverBullseye.replace(() => true);
+
+    const PokeballMissState = ditto_1.default.use(
+      "Niantic.Holoholo.Encounter.Pokeball/<MissStateImpl>"
+    );
+    PokeballMissState.MoveNext.replace(function () {
+      this["<>4__this"].SetActive(true);
+      return false;
+    });
+
+    const ARPlusEncounterValuesProto = ditto_1.default.use(
+      "ARPlusEncounterValuesProto"
+    );
+
+    const CatchPokemonProto = ditto_1.default.use("CatchPokemonProto");
+    CatchPokemonProto.CalculateSize.attach({
+      onEnter() {
+        const arPlusProto = ARPlusEncounterValuesProto.$new();
+        arPlusProto.proximity_ = 0.05 * Math.random() + 0.45;
+        arPlusProto.awareness_ = 0;
+        arPlusProto.pokemonFrightened_ = false;
+        this.spinModifier_ = 1;
+        this.arPlusValues_ = arPlusProto;
+      },
+    });
+  }
+}
+export default PerfectedThrow;

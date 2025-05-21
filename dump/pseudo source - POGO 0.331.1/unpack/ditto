@@ -1,0 +1,280 @@
+(function (global) {
+  (() => {
+    exports.dittoDebug = undefined;
+    exports.default = undefined;
+    require("@pkmd/console");
+    let _global$Frida;
+    const _core = _interopRequireDefault(require("./core"));
+    const _factory = _interopRequireDefault(require("./factory"));
+    const _traverse_objects = require("./utils/traverse_objects");
+    const _obfmap = _interopRequireDefault(require("./obfmap"));
+    const _monitor = _interopRequireDefault(require("./monitor"));
+    const _thread = _interopRequireDefault(require("./il2cpp/thread"));
+    const _api = _interopRequireDefault(require("./il2cpp/api"));
+    const _db = require("./db");
+    const _klass = _interopRequireDefault(require("./klass"));
+    const _telemetry = require("./telemetry");
+    const _utils = require("./utils/utils");
+    const _package = _interopRequireDefault(require("../package.json"));
+    const _exception = _interopRequireDefault(require("./utils/exception"));
+    function _interopRequireDefault(obj) {
+      return obj && obj.__esModule ? obj : { default: obj };
+    }
+    const dittoDebug = (exports.dittoDebug = false);
+    const version = _package.default.version;
+    global._setUnhandledExceptionCallback((error) => {
+      _exception.default.exceptionHandlerCallback(error);
+    });
+    const who =
+      null == (_global$Frida = global.Frida) ? global.Floyd : _global$Frida;
+    class Ditto {
+      static isInitialized = false;
+      static onInitializeFuncs = [];
+      static PlayerPrefs; // TODO: for debuggin purposes just so they get exported, remove later
+      static Core = _core.default;
+      static Thread = _thread.default;
+      static Telemetry = _telemetry.Telemetry;
+      static Il2cppApi = _api.default;
+      static Monitor = new _monitor.default();
+      static initialize(debug = false) {
+        if (this.isInitialized) {
+          throw new Error("Dittolib is already initialized!");
+        }
+        info(`Initializing Dittolib ${version}...`);
+
+        if (debug) {
+          warn(
+            color.blue.bold(
+              `Development mode is active! Floyd version ${who.version} on ${Process.arch}.`
+            )
+          );
+
+          _core.default.dittoDebug = true;
+          _core.default.tracingMode = true;
+        }
+
+        _core.default.initialize();
+        _klass.default.getClassList();
+
+        _core.default.unityVersion = this.use(
+          "UnityEngine.Application"
+        ).get_unityVersion();
+
+        this.PlayerPrefs = this.use("UnityEngine.PlayerPrefs");
+        for (let callback; (callback = this.onInitializeFuncs.shift()); ) {
+          info(
+            `Running onInitialize callback. #${this.onInitializeFuncs.length} remaining...`
+          );
+
+          callback();
+        }
+        this.isInitialized = true;
+      }
+      static onInitialize(callback) {
+        if (this.isInitialized) {
+          warn(
+            "Running onInitialize callback but was already initialized. This is not necessary."
+          );
+
+          callback();
+        } else {
+          this.onInitializeFuncs.push(callback);
+        }
+      }
+      static use(classname) {
+        const splittedName = (0, _utils.extractNamespaceAndClassname)(
+          classname
+        );
+        return _factory.default.use(
+          splittedName.namespace,
+          splittedName.classname
+        );
+      }
+      static choose(classname, algo = 1) {
+        const wrapperKlass = Ditto.use(classname);
+        const instances = _core.default.getInstances(wrapperKlass.$klass, algo);
+        const wrappedInstances = [];
+
+        instances.forEach((instance) =>
+          wrappedInstances.push(
+            _factory.default.cast(instance, wrapperKlass.$klass)
+          )
+        );
+
+        return wrappedInstances;
+      }
+      static perform(block) {
+        return _core.default.perform(block);
+      }
+      static runOnSeparateThread(callback) {
+        return new Promise((resolve, reject) => {
+          const nativeCallback = new NativeCallback(
+            () => {
+              try {
+                const retval = callback();
+                resolve(retval);
+              } catch (e) {
+                error(e);
+                reject(e);
+              }
+              return NULL;
+            },
+            "pointer",
+            ["pointer", "pointer", "pointer", "pointer"]
+          );
+
+          const createThread = new NativeFunction(
+            Module.findExportByName("libc.so", "pthread_create"),
+            "pointer",
+            ["pointer", "pointer", "pointer", "pointer"]
+          );
+
+          createThread(
+            Memory.alloc(Process.pointerSize),
+            NULL,
+            nativeCallback,
+            NULL
+          );
+        });
+      }
+      static cast(obj, classname) {
+        const obj_$instance = obj.$instance;
+
+        if (obj_$instance instanceof NativePointer) {
+          error("The first argument obj must be a Il2cpp instance");
+        }
+
+        const splittedName = (0, _utils.extractNamespaceAndClassname)(
+          classname
+        );
+
+        const wrapperKlass = _klass.default.getClass(
+          splittedName.namespace,
+          splittedName.classname
+        );
+
+        if (!_core.default.getClassIsAssignable(wrapperKlass, obj.$klass)) {
+          throw new Error(
+            `Cannot cast ${obj.$fullName} to ${
+              splittedName.namespace ? `${splittedName.namespace}.` : ""
+            }${_obfmap.default.getUnObfuscated(splittedName.classname)}`
+          );
+        }
+        return _factory.default.cast(obj_$instance, wrapperKlass);
+      }
+      static wrap(pointer) {
+        if (pointer instanceof NativePointer) {
+          error("The object must be a NativePointer");
+        }
+
+        return _factory.default.wrap(pointer);
+      }
+      static synchronized(obj, fn) {
+        const obj_$instance = obj.$instance;
+
+        if (obj_$instance instanceof NativePointer) {
+          error("The first argument obj must be a Il2cpp instance");
+        }
+
+        _core.default.MonitorEnter(obj_$instance);
+        try {
+          return fn();
+        } finally {
+          _core.default.MonitorExit(obj_$instance);
+        }
+      }
+      static setObfuscationMap(obj) {
+        return _obfmap.default.set(obj);
+      }
+      static getUnobfuscatedName(name) {
+        return _obfmap.default.getUnObfuscated(name);
+      }
+      static get usedSize() {
+        return _core.default.UsedSize();
+      }
+      static dumpStats(path) {
+        return _core.default.DumpStats(path);
+      }
+      static gcCollectLittle() {
+        return _core.default.GcCollectALittle();
+      }
+      static gcCollect(generations) {
+        return _core.default.GcCollect(generations);
+      }
+      static gcStopWorld() {
+        return _core.default.GcStopWorld();
+      }
+      static gcStartWorld() {
+        return _core.default.GcStartWorld();
+      }
+      static gcStartIncremental() {
+        return _core.default.GcStartIncremental();
+      }
+      static setGcStatus(status) {
+        if (status === true && _core.default.isGcDisabled()) {
+          _core.default.GcEnable();
+        }
+
+        if (status === false && !_core.default.isGcDisabled()) {
+          if (!_core.default.isGcDisabled()) {
+            _core.default.GcDisable();
+          }
+        }
+      }
+      static development() {
+        if (!_core.default.dittoDebug) {
+          warn(
+            color.blue.bold(
+              "Ditto.development does nothing, you are better off using debug mode on initialise, this method will be removed soon"
+            )
+          );
+        }
+      }
+      static sendExceptionRequests(url, token, tier) {
+        info("Sending Exceptions");
+        _telemetry.Telemetry.url = url;
+        _telemetry.Telemetry.token = token;
+        _telemetry.Telemetry.tier = tier;
+      }
+      static installExceptionListener(blacklist = ["System.Threading"]) {
+        _exception.default.installIl2cppExceptionListener(blacklist);
+      }
+      static dumpFields(
+        object,
+        depth = 0,
+        blacklist = ["Niantic.Holoholo.Rpc", "`"]
+      ) {
+        (0, _traverse_objects.dumpFields)(object, depth, blacklist, 2, false);
+      }
+      static dumpHierarchy(transform) {
+        const objectC = Ditto.use("UnityEngine.Object");
+        (0, _traverse_objects.dumpChildsHierarchy)(
+          transform,
+          undefined,
+          undefined,
+          undefined,
+          objectC
+        );
+      }
+      static scheduleOnInitializerThread(callback) {
+        return _thread.default.scheduleOnInitializerThread(callback);
+      }
+      static getAttachedThreads() {
+        return _thread.default.attachedThreads();
+      }
+      static initDB(dbPath, createTables, enableLogs) {
+        return new _db.Database(dbPath, createTables, enableLogs);
+      }
+    }
+    exports.default = Ditto;
+  }).call(this);
+}).call(
+  this,
+  typeof global !== "undefined"
+    ? global
+    : typeof self !== "undefined"
+    ? self
+    : typeof window !== "undefined"
+    ? window
+    : {}
+);

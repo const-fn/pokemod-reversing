@@ -1,0 +1,78 @@
+const _api = _interopRequireDefault(require("./il2cpp/api"));
+export const __esModule = true;
+function _interopRequireDefault(obj) {
+  return obj && obj.__esModule ? obj : { default: obj };
+}
+class Monitor {
+  enter(object) {
+    unsafe(`Monitor enter(${object.$instance})`);
+    const retval = _api.default.monitor_enter(object.$instance);
+
+    if (!retval) {
+      _warn(`Error when trying to Monitor.enter at ${object.$instance}`);
+    }
+
+    return retval;
+  }
+  tryEnter(object, timeout = 10) {
+    unsafe(`Monitor tryEnter(${object.$instance})`);
+    const retval = !!_api.default.monitor_try_enter(object.$instance, timeout);
+
+    if (!retval) {
+      _warn(`Error when trying to Monitor.tryEnter at ${object.$instance}`);
+    }
+
+    return retval;
+  }
+  exit(object) {
+    unsafe(`Monitor exit(${object.$instance})`);
+    const retval = _api.default.monitor_exit(object.$instance);
+
+    if (!retval) {
+      _warn(`Error when trying to Monitor.exit at ${object.$instance}`);
+    }
+
+    return retval;
+  }
+  pulse(object) {
+    unsafe(`Monitor pulse(${object.$instance})`);
+    const retval = _api.default.monitor_pulse(object.$instance);
+
+    if (!retval) {
+      _warn(`Error when trying to Monitor.pulse at ${object.$instance}`);
+    }
+
+    return retval;
+  }
+  pulseAll(object) {
+    unsafe(`Monitor pulseAll(${object.$instance})`);
+    const retval = _api.default.monitor_pulse_all(object.$instance);
+
+    if (!retval) {
+      _warn(`Error when trying to Monitor.pulseAll at ${object.$instance}`);
+    }
+
+    return retval;
+  }
+  wait(object) {
+    unsafe(`Monitor wait(${object.$instance})`);
+    const retval = _api.default.monitor_wait(object.$instance);
+
+    if (!retval) {
+      _warn(`Error when trying to Monitor.wait at ${object.$instance}`);
+    }
+
+    return retval;
+  }
+  tryWait(object, timeout = 10) {
+    unsafe(`Monitor tryWait(${object.$instance})`);
+    const retval = !!_api.default.monitor_try_wait(object.$instance, timeout);
+
+    if (!retval) {
+      _warn(`Error when trying to Monitor.tryWait at ${object.$instance}`);
+    }
+
+    return retval;
+  }
+}
+export default Monitor;

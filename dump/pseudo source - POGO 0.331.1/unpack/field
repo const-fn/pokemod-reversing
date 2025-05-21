@@ -1,0 +1,128 @@
+import { isPrimitive } from "./types";
+export const __esModule = true;
+const _core = _interopRequireDefault(require("./core"));
+const _dev_bridge = _interopRequireDefault(require("./utils/dev_bridge"));
+function _interopRequireDefault(obj) {
+  return obj && obj.__esModule ? obj : { default: obj };
+}
+class Field {
+  constructor(fieldInfo) {
+    this.fieldInfo = fieldInfo;
+  }
+  get fieldName() {
+    if (!this._fieldName) {
+      this._fieldName = _core.default.getFieldName(this.fieldInfo);
+    }
+
+    return this._fieldName;
+  }
+  get type() {
+    if (!this._type) {
+      this._type = _core.default.getFieldType(this.fieldInfo);
+    }
+
+    return this._type;
+  }
+  get offset() {
+    if (!this._offset) {
+      this._offset = _core.default.getFieldOffset(this.fieldInfo);
+    }
+
+    return this._offset;
+  }
+  get modifiers() {
+    if (!this._modifiers) {
+      this._modifiers = _core.default.getFieldModifiers(this.fieldInfo);
+    }
+
+    return this._modifiers;
+  }
+  getValue(obj) {
+    let _DevBridge$profiler; // consts are implicitly static
+    const type = this.type;
+
+    if (null != (_DevBridge$profiler = _dev_bridge.default.profiler)) {
+      _DevBridge$profiler.logFieldInvoked("GET", this.fieldName, obj);
+    }
+
+    if (this.modifiers.includes("static") || this.modifiers.includes("const")) {
+      const address = Memory.alloc(type.size);
+      _core.default.getStaticField(this.fieldInfo, address);
+
+      return isPrimitive(type.name)
+        ? type.fromIl2cpp(type.read(address))
+        : type.fromIl2cpp(address.readPointer(), true);
+    }
+
+    if (obj === null || obj === undefined) {
+      error(`${this.fieldName}: cannot get instance field without instance`);
+    }
+
+    if (isPrimitive(type.name)) {
+      const address = Memory.alloc(type.size);
+      _core.default.getPrimitiveField(obj, this.fieldInfo, address);
+      let retval;
+      try {
+        retval = type.fromIl2cpp(type.read(address));
+      } catch (e) {
+        warn(`Error when reading primitive field ${this.fieldName}`);
+        retval = type.fromIl2cpp(address.readPointer(), true);
+      }
+      return retval;
+    }
+
+    return type.fromIl2cpp(_core.default.getField(obj, this.fieldInfo), true);
+  }
+  setValue(obj, val) {
+    let _DevBridge$profiler2;
+    const type = this.type;
+    if (this.modifiers.includes("const")) {
+      error(`${this.fieldName}: cannot set value to const field`);
+      return false;
+    }
+
+    if (null != (_DevBridge$profiler2 = _dev_bridge.default.profiler)) {
+      _DevBridge$profiler2.logFieldInvoked("SET", this.fieldName, obj);
+    }
+
+    if (this.modifiers.includes("static")) {
+      let address;
+
+      if (isPrimitive(type.name)) {
+        address = Memory.alloc(type.size);
+        type.write(address, type.toIl2cpp(val));
+      }
+
+      address = type.toIl2cpp(val, true);
+      _core.default.setStaticField(this.fieldInfo, address);
+      return true;
+    }
+
+    if (obj === null || obj === undefined) {
+      error(`${this.fieldName}: cannot set instance field without instance`);
+      return false;
+    }
+    if (isPrimitive(type.name)) {
+      const address = Memory.alloc(type.size);
+      type.write(address, type.toIl2cpp(val));
+      _core.default.setPrimitiveField(obj, this.fieldInfo, address);
+      return true;
+    } // deals with struct fields
+    if (_core.default.isClassStruct(type.getKlass == null || type.getKlass())) {
+      // @see: libil2cpp/icalls/mscorlib/System.Reflection/MonoField.cpp:102
+      // @see: libil2cpp/vm/Field.cpp:333
+      // TODO: missing probably a check for if value is null then write all zeros and set has_value to false
+      const val_size = _core.default.getValueSize(val.$klass);
+      Memory.copy(obj.add(this.offset), type.toIl2cpp(val), val_size);
+
+      if (_core.default.isNullableFieldOrType(type.getKlass())) {
+        obj.add(this.offset).add(val_size).writeU8(1);
+      }
+
+      return true;
+    }
+    _core.default.setField(obj, this.fieldInfo, type.toIl2cpp(val, true));
+    return true;
+  }
+}
+export { Field };

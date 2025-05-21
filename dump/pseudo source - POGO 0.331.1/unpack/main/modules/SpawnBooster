@@ -1,0 +1,27 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+class SpawnBooster extends ModuleBase_1.default {
+  init() {
+    super.init();
+    const MapSettingsProto = ditto_1.default.use("MapSettingsProto");
+    MapSettingsProto[
+      "pb::Niantic.Protobuf.IBufferMessage.InternalMergeFrom"
+    ].attach({
+      onLeave() {
+        this.pokemonVisibleRange_ = 100;
+        this.encounterRangeMeters_ = 100;
+      },
+    });
+    const MapAvatar = ditto_1.default.use("Niantic.Holoholo.Avatar.MapAvatar");
+    MapAvatar.ShowAvatar.attach({
+      onLeave() {
+        const bonusPulseRingGO =
+          this.bonusPulseRingTransform.base.get_gameObject();
+        bonusPulseRingGO.set_active(false);
+      },
+    });
+  }
+}
+export default SpawnBooster;

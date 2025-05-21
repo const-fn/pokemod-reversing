@@ -1,0 +1,6 @@
+export const __esModule = true;
+class DevBridge {
+  profiler;
+}
+const _default = new DevBridge();
+export default _default;

@@ -1,0 +1,225 @@
+import { oneLineBig } from "../utils/Toast";
+import PogoUtils_1 from "../utils/PogoUtils";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const UserData_1 = __importDefault(require("../utils/UserData"));
+const I18n_1 = __importDefault(require("../utils/I18n"));
+const PersistentPrefs_1 = __importDefault(require("../utils/PersistentPrefs"));
+class IncognitoMode extends ModuleBase_1.default {
+  constructor() {
+    super();
+    this.spoofedName = "The Pokemod Group";
+    this.spoofedEmail = "pokemod.dev";
+    this.spoofedLevel = "50";
+    this.currentUsername = "";
+    this.blankName = false;
+  }
+  init() {
+    super.init();
+    const self = this;
+
+    const PlayerHudGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.Map.UI.PlayerHudGuiController"
+    );
+
+    PlayerHudGuiController.RefreshPlayerStats.attach({
+      onLeave() {
+        self.getBlankName();
+
+        if (self.blankName) {
+          this.playerName.set_text("");
+          this.playerNameShadow.set_text("");
+          this.playerLevel.set_text("");
+          this.playerLevelShadow.set_text("");
+        } else {
+          this.playerName.set_text(self.spoofedName);
+          this.playerNameShadow.set_text(self.spoofedName);
+          this.playerLevel.set_text(self.spoofedLevel);
+          this.playerLevelShadow.set_text(self.spoofedLevel);
+        }
+      },
+    });
+    const PlayerProfilePage = ditto_1.default.use(
+      "Niantic.Holoholo.UI.PlayerProfilePage"
+    );
+    PlayerProfilePage.RefreshPlayerUI.attach({
+      onLeave() {
+        this.playerNameText.set_text(self.spoofedName);
+        this.levelText.set_text(self.spoofedLevel);
+      },
+    });
+    const FriendsListHeaderCellView = ditto_1.default.use(
+      "Niantic.Holoholo.Social.UI.FriendsListHeaderCellView"
+    );
+    FriendsListHeaderCellView.EnableOnlineText.attach({
+      onEnter() {
+        this.playerName.set_text(self.spoofedName);
+      },
+    });
+    const GymBattleIntroGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.Gym.GymBattleIntroGuiController"
+    );
+    GymBattleIntroGuiController.SetPlayerInfo.attach({
+      onLeave() {
+        this.playerNameLabel.set_text(self.spoofedName);
+        this.playerLevelLabel.set_text(self.spoofedLevel);
+      },
+    });
+    const CombatDuelOverlayWidget = ditto_1.default.use(
+      "Niantic.Holoholo.Combat.Avatars.CombatDuelOverlayWidget"
+    );
+    CombatDuelOverlayWidget.Initialize.attach({
+      onLeave() {
+        this.playerNameText.set_text(self.spoofedName);
+
+        if (this.opponentNameText.get_text() == "Leader Sierra") {
+          this.opponentNameText.set_text("Naked Sierra");
+        }
+      },
+    });
+    const GymBattleUI = ditto_1.default.use(
+      "Niantic.Holoholo.Battle.GymBattleUI"
+    );
+    GymBattleUI.Init.attach({
+      onLeave() {
+        this.playerNameplate.nameLabel.set_text(self.spoofedName);
+      },
+    });
+    const GymApproachAvatarUI = ditto_1.default.use("GymApproachAvatarUI");
+    GymApproachAvatarUI.Initialize.attach({
+      onLeave() {
+        if (this.nameLabel.get_text() == UserData_1.default.username) {
+          this.nameLabel.set_text(self.spoofedName);
+          this.nameLabelShadow.set_text(self.spoofedName);
+        }
+      },
+    });
+    const BattleCountdown = ditto_1.default.use(
+      "Niantic.Holoholo.Battle.BattleCountdown"
+    );
+    BattleCountdown.ShowRoundDetails.attach({
+      onEnter(args) {
+        args[1] = self.spoofedName;
+      },
+    });
+    const RaidLobbyStage = ditto_1.default.use(
+      "Niantic.Holoholo.Raid.RaidLobbyStage"
+    );
+    RaidLobbyStage.UpdateAvatars.replace(() => {});
+    const RaidLeaderboardCardWidget = ditto_1.default.use(
+      "Niantic.Holoholo.Raid.RaidLeaderboardCardWidget"
+    );
+    RaidLeaderboardCardWidget.Initialize.attach({
+      onLeave() {
+        this.playerName.set_text(self.spoofedName);
+      },
+    });
+    ditto_1.default.use("UnityEngine.UI.Text");
+
+    if (UserData_1.default.gameVersion == "0.301.0") {
+      ditto_1.default
+        .use("Niantic.Holoholo.UI.SettingsGuiController")
+        .HandleOpen.attach({
+          onLeave() {
+            this.nicknameInfoLabel.set_text("The Pokemod Group");
+          },
+        });
+    }
+
+    ditto_1.default
+      .use(
+        "Niantic.Holoholo.Settings.GuiControllers.AccountSettingsGuiController"
+      )
+      .Initialize.attach({
+        onLeave() {
+          this.nicknameInfoLabel.set_text("The Pokemod Group");
+        },
+      });
+
+    ditto_1.default
+      .use("Niantic.Holoholo.UI.LinkAccountToggle")
+      .SetupAccountName.attach({
+        onEnter(args) {
+          if (args[0]) {
+            args[0] = "pokemod.dev";
+          }
+        },
+      });
+
+    ditto_1.default
+      .use("Niantic.Holoholo.Quests.QuestDialogGuiController")
+      .InsertPlayerName.attach({
+        onEnter() {
+          this.playerNameKey = "canbeanything";
+        },
+        onLeave(retval) {
+          return retval.replace("%PLAYERNAME%", "an Explorer from Pokemod");
+        },
+      });
+
+    const ConversationLayoutGui = ditto_1.default.use(
+      "Niantic.Holoholo.UI.Conversations.ConversationLayoutGui"
+    );
+    ConversationLayoutGui.SetSpeechText.attach({
+      onEnter(args) {
+        args[0] = UserData_1.default.username
+          ? args[0].replace(
+              UserData_1.default.username,
+              "Explorer from Pokemod"
+            )
+          : "";
+      },
+    });
+    const SendGiftGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.Social.Gifting.UI.SendGiftGuiController"
+    );
+    SendGiftGuiController.Initialize.attach({
+      onLeave() {
+        this.sender.set_text(self.spoofedName);
+      },
+    });
+    const GiftDetailsGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.Social.Gifting.UI.GiftDetailsGuiController"
+    );
+
+    GiftDetailsGuiController.Initialize.attach({
+      onLeave() {
+        this.sender.set_text(self.spoofedName);
+      },
+    });
+
+    PogoUtils_1.PogoUtils.addCheatCode("WHEELSONLYPLEASE", () => {
+      oneLineBig(
+        I18n_1.default.getText("toast.incognitoMode.blankNameEnabled")
+      );
+
+      self.blankName = true;
+
+      PersistentPrefs_1.default.set(`${self.currentUsername}_blankName`, true);
+    });
+
+    PogoUtils_1.PogoUtils.addCheatCode("TURNUPTHEHEAT", () => {
+      oneLineBig(
+        I18n_1.default.getText("toast.incognitoMode.blankNameDisabled")
+      );
+
+      self.blankName = false;
+
+      PersistentPrefs_1.default.set(`${self.currentUsername}_blankName`, false);
+    });
+  }
+  getBlankName() {
+    if (this.currentUsername != UserData_1.default.username) {
+      this.currentUsername = UserData_1.default.username;
+      this.blankName = false;
+
+      this.blankName = PersistentPrefs_1.default.get(
+        `${this.currentUsername}_blankName`,
+        false
+      );
+    }
+  }
+}
+export default IncognitoMode;

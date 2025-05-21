@@ -1,0 +1,98 @@
+const getCircledNumber = (n) =>
+  isNaN(parseInt(n)) || 15 < (parseInt(n) < 0)
+    ? n
+    : String.fromCodePoint(
+        {
+          0: 9450,
+          1: 9312,
+          2: 9313,
+          3: 9314,
+          4: 9315,
+          5: 9316,
+          6: 9317,
+          7: 9318,
+          8: 9319,
+          9: 9320,
+          10: 9321,
+          11: 9322,
+          12: 9323,
+          13: 9324,
+          14: 9325,
+          15: 9455,
+        }[parseInt(n)]
+      );
+export { getCircledNumber };
+const getSubString = (s) => {
+  const replaceMap = {
+    0: 8320,
+    1: 8321,
+    2: 8322,
+    3: 8323,
+    4: 8324,
+    5: 8325,
+    6: 8326,
+    7: 8327,
+    8: 8328,
+    9: 8329,
+  };
+  let ret = "";
+  for (const c of `${s}`) {
+    ret += replaceMap[c] ? String.fromCodePoint(replaceMap[c]) : c;
+  }
+  return ret;
+};
+export { getSubString };
+const getSupString = (s) => {
+  const replaceMap = {
+    0: 8304,
+    1: 185,
+    2: 178,
+    3: 179,
+    4: 8308,
+    5: 8309,
+    6: 8310,
+    7: 8311,
+    8: 8312,
+    9: 8313,
+  };
+  let ret = "";
+  for (const c of `${s}`.replace(".5", "'")) {
+    ret += replaceMap[c] ? String.fromCodePoint(replaceMap[c]) : c;
+  }
+  return ret;
+};
+export { getSupString };
+const rainbowText = (s) => {
+  const colors = [
+    "#FF8484",
+    "#f69847",
+    "#ebd631",
+    "#40d458",
+    "#5494FF",
+    "#6A65B9",
+    "#BD68FD",
+  ];
+  let result = "";
+  const specialChars = [
+    String.fromCodePoint(8197),
+    String.fromCodePoint(8198),
+    " ",
+  ];
+  let skipTag = false;
+  let skippedCount = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] == "<") {
+      skipTag = true;
+    } else if (s[i] == ">") {
+      skipTag = false;
+    } else if (!skipTag && !specialChars.includes(s[i])) {
+      const color = colors[(i - skippedCount) % colors.length];
+      result += `<color=${color}>${s[i]}</color>`;
+      continue;
+    }
+    skippedCount += 1;
+    result += s[i];
+  }
+  return result;
+};
+export { rainbowText };

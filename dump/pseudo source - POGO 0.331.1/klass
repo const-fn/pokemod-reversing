@@ -1,0 +1,228 @@
+export const __esModule = true;
+const _obfmap = _interopRequireDefault(require("./obfmap"));
+const _core = _interopRequireDefault(require("./core"));
+function _interopRequireDefault(obj) {
+  return obj && obj.__esModule ? obj : { default: obj };
+}
+
+/* eslint-disable curly */ /* eslint-disable guard-for-in */ const usedClassesCache =
+  new Map();
+
+const cachedKlassesAssemblies = new Map();
+const cachedKlassesNamespaces = new Map();
+const cachedKlassesSingular = new Map(); // Class Klass is used to handle all operations related to classes in the program
+class Klass {
+  static getClassCache(type = "assembly") {
+    switch (type) {
+      case "assembly": {
+        return cachedKlassesAssemblies;
+      }
+      case "namespace": {
+        return cachedKlassesNamespaces;
+      }
+      case "singular": {
+        return cachedKlassesSingular;
+      }
+      case "used": {
+        return cachedKlassesSingular;
+      }
+      default: {
+        throw new Error(
+          `Invalid type. Must be one of: assembly, namespace, singular, used ${type}.`
+        );
+      }
+    }
+  } // getClassList() is used to get a list of all the classes in the program
+  static getClassList() {
+    const start = Date.now();
+    const toDeleteKlassesNamespaces = new Set();
+    const toDeleteKlassesSingular = new Set();
+    cachedKlassesAssemblies.clear();
+    cachedKlassesNamespaces.clear();
+    cachedKlassesSingular.clear();
+    const images = _core.default.getAssemblies(); // Loop through all the images in the program
+    for (let i = 0; i < images.length; i++) {
+      // for (let i = images.length - 1; i >= 0; i--) {
+      const image = images[i].ptr;
+
+      const imageName = images[i].name;
+      const classCount = images[i].count;
+      const assemblyNameNoExt = imageName.substring(
+        0,
+        imageName.lastIndexOf(".")
+      );
+
+      if (_core.default.dittoDebug) {
+        info(`Processing ${imageName} (${classCount} classes)`);
+      }
+
+      for (let i = 0; i < classCount; i++) {
+        const klass = _core.default.getClassFromImage(image, i);
+        let klassName = _core.default.getClassname(klass);
+        let klassNamespace = _core.default.getClassNamespace(klass);
+        if (!klassNamespace) {
+          let lastParent;
+          let parentsNames = "";
+          let parent = _core.default.getClassDeclaringType(klass);
+
+          while (!parent.isNull()) {
+            lastParent = parent; // If the parent is not null, get the name of the parent and call this function again with the parent
+            const parentName = _core.default.getClassname(parent);
+            parentsNames = `${parentName}/${parentsNames}`;
+            parent = _core.default.getClassDeclaringType(parent);
+          }
+
+          if (lastParent) {
+            klassNamespace = _core.default.getClassNamespace(lastParent);
+            klassName = parentsNames + klassName;
+          }
+        }
+
+        if (klassNamespace) {
+          klassNamespace += ".";
+        }
+
+        const key = `${assemblyNameNoExt}::${klassNamespace}${klassName}`;
+
+        if (!cachedKlassesAssemblies.has(key)) {
+          cachedKlassesAssemblies.set(key, klass);
+        }
+
+        const namespaceKey = `${klassNamespace}${klassName}`;
+
+        if (cachedKlassesNamespaces.has(namespaceKey)) {
+          toDeleteKlassesNamespaces.add(namespaceKey);
+        } else {
+          cachedKlassesNamespaces.set(namespaceKey, klass);
+        }
+
+        const singularKey = `${klassName}`;
+
+        if (cachedKlassesSingular.has(singularKey)) {
+          toDeleteKlassesSingular.add(singularKey);
+        } else {
+          cachedKlassesSingular.set(singularKey, klass);
+        }
+      }
+    }
+    for (const key of toDeleteKlassesNamespaces) {
+      cachedKlassesNamespaces.delete(key);
+    }
+    for (const key of toDeleteKlassesSingular) {
+      cachedKlassesSingular.delete(key);
+    }
+
+    if (_core.default.dittoDebug) {
+      info(
+        `Took ${Date.now() - start}ms for ${
+          cachedKlassesAssemblies.size
+        } assemblii, ${cachedKlassesNamespaces.size} namespacy, ${
+          cachedKlassesSingular.size
+        } singulars`
+      );
+    }
+  }
+  static getParentsNames(klass) {
+    // Get the parent of the given klass
+    const parent = _core.default.getClassDeclaringType(klass);
+    if (parent.isNull()) {
+      // If the parent is null, get the namespace of the given klass
+      const parentNamespace = _core.default.getClassNamespace(klass);
+      return parentNamespace ? `${parentNamespace}.` : "";
+    } // If the parent is not null, get the name of the parent and call this function again with the parent
+    const parentName = _core.default.getClassname(parent);
+    return `${this.getParentsNames(parent) + parentName}/`;
+  }
+  static tryGetClass(query) {
+    // Try to get the class from the cache of assemblies, namespaces, or singular names
+    if (cachedKlassesAssemblies.has(query)) {
+      return cachedKlassesAssemblies.get(query);
+    }
+    if (cachedKlassesNamespaces.has(query)) {
+      return cachedKlassesNamespaces.get(query);
+    }
+    if (cachedKlassesSingular.has(query)) {
+      return cachedKlassesSingular.get(query);
+    } // If the class was not found in the cache, log a warning and try to find the class by looping through the assemblies
+    warn(
+      `Warning: could not instantly fetch class ${_obfmap.default.getPrettyString(
+        query
+      )}! Trying to find class by looping...`
+    );
+    const result = [];
+    for (const key of cachedKlassesAssemblies.keys()) {
+      if (
+        key.endsWith(`.${query}`) ||
+        key.endsWith(`::${query}`) ||
+        key.endsWith(`::${query}`) ||
+        key.endsWith(`/${query}`)
+      ) {
+        result.push(key);
+      }
+    }
+    if (result.length == 0) {
+      // If there are no matches, throw an error indicating that the class could not be found
+      throw new Error(
+        `Could not find class ${_obfmap.default.getPrettyString(query)}. ${
+          Object.keys(_obfmap.default.lex_to_obf).length
+            ? ""
+            : "Did you forget to load the obfuscation map?"
+        }`
+      );
+    } // If there is only one match, return the class
+    if (result.length == 1) {
+      return cachedKlassesAssemblies.get(result[0]);
+    } // If there are multiple matches, throw an error and list the possible options
+    const postfixCount = {};
+    result.forEach((className) => {
+      // Get the postfix of the class name (i.e. everything after the ::)
+      const postfix = className.split("::").slice(1).join("::");
+      postfixCount[postfix] = postfixCount[postfix]
+        ? postfixCount[postfix] + 1
+        : 1;
+    });
+    const strippedResult = result.map((className) => {
+      const postfix = className.split("::").slice(1).join("::");
+      return postfixCount[postfix] === 1
+        ? color.yellow(postfix)
+        : `${color.blue(className.split("::")[0])}::${color.yellow(postfix)}`;
+    }); // Throw an error indicating that there are multiple matches, and listing the possible options
+    throw new Error(
+      `Found more than one class for ${_obfmap.default.getPrettyString(
+        query
+      )}. Use one of:\n  ${strippedResult.join("\n  ")}`
+    );
+  }
+  static getClass(namespace, classname) {
+    // Check if the class has already been retrieved and return it from the cache if it has
+    const query = (namespace ? `${namespace}.` : "") + classname;
+    if (usedClassesCache.has(query)) {
+      return usedClassesCache.get(query);
+    } // Get the obfuscated class name
+    let obfuscatedClassname = _obfmap.default.getObfuscated(classname); // If the obfuscated class name is the same as the class name, it means that there is no entry for the class in the obfuscation map
+
+    if (obfuscatedClassname == classname && obfuscatedClassname.includes("/")) {
+      obfuscatedClassname = obfuscatedClassname
+        .split("/")
+        .map((c) => _obfmap.default.getObfuscated(c))
+        .join("/");
+    }
+
+    if (!_core.default.globalDomain) {
+      throw new Error(
+        "There is no Domain from which to pick assemblies from! Are you sure Dittolib is initialized?"
+      );
+    }
+
+    const obfuscatedQuery =
+      (namespace ? `${namespace}.` : "") + obfuscatedClassname;
+
+    const matchingClass = this.tryGetClass(obfuscatedQuery); // Retrieve the class from the big caches
+
+    // Store the class in the cache for future use
+    usedClassesCache.set(query, matchingClass);
+
+    return matchingClass;
+  }
+}
+export default Klass;

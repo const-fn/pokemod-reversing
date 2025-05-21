@@ -1,0 +1,200 @@
+(function (setImmediate) {
+  (() => {
+    const __importDefault = (mod) =>
+      mod && mod.__esModule ? mod : { default: mod };
+    exports.getModulesToEnable = undefined;
+    exports.loadModules = undefined;
+    exports.waitUntilLoaded = undefined;
+    exports.startKamiThread = undefined;
+    const kamikaze_1 = require("@pkmd/kamikaze");
+    const ditto_1 = __importDefault(require("@pkmd/ditto"));
+    Java.send = (data) => {
+      setImmediate(() => {
+        Java.performNow(() => {
+          const Intent = Java.use("android.content.Intent");
+          const ActivityThread = Java.use("android.app.ActivityThread");
+          const Context = Java.use("android.content.Context");
+
+          const ctx = Java.cast(
+            ActivityThread.currentApplication().getApplicationContext(),
+            Context
+          );
+
+          const intent_new = Intent.$new("com.pokemod.app.BRIDGE_IN");
+          intent_new.putExtra("data", JSON.stringify(data));
+          ctx.sendBroadcast(intent_new);
+        });
+      });
+    };
+    function startKamiThread() {
+      setTimeout(() => {
+        (0, kamikaze_1.runKamiLoop)(5000 /* 5e3 */, (entries) => {
+          const promises = [];
+
+          entries.forEach((entry) => {
+            error(
+              `${entry.count} matches for ${entry.pattern} in ${entry.module}`
+            );
+
+            promises.push(
+              ditto_1.default.Telemetry.sendLogTelemetry(
+                entry.type,
+                `${entry.count} matches for ${entry.pattern} in ${entry.module}`
+              )
+            );
+          });
+
+          return Promise.all(promises);
+        });
+      }, 5000 /* 5e3 */);
+    }
+    exports.startKamiThread = startKamiThread;
+    function waitUntilLoaded(callback) {
+      function waitForLibFirebase() {
+        count += 1;
+
+        if (Module.findBaseAddress("libFirebaseCppApp-11_8_0.so")) {
+          info(color.green(`Lib loaded! Made ${count} loops....`));
+
+          Java.send({
+            script: "telemetry",
+            name: "attach",
+            content: { toast: true },
+          });
+
+          info(
+            color.gray(
+              `IL2CPP base address: ${Module.findBaseAddress("libil2cpp.so")}`
+            )
+          );
+
+          callback(false);
+        } else {
+          setTimeout(waitForLibFirebase, 50);
+        }
+      }
+      info(color.yellow("Waiting until we can initialize..."));
+      let count = 0;
+      waitForLibFirebase();
+    }
+    exports.waitUntilLoaded = waitUntilLoaded;
+    function loadModules(modulesToEnable, startGlobalTime) {
+      let loadedCount = 0;
+      let totalTime = 0;
+      for (const module of modulesToEnable) {
+        if (module) {
+          loadedCount += 1;
+          try {
+            let time = Date.now();
+            const module_name = module.name;
+            const instance = new module();
+            instance.init();
+            time -= Date.now();
+
+            debug(
+              color.blue(
+                `${module_name} took ${-time} ms. Modules total: ${(totalTime -=
+                  time)} ms.`
+              )
+            );
+          } catch (e) {
+            error(color.red.bold(`Error loading module ${module.name}!\n${e}`));
+
+            setImmediate(
+              ditto_1.default.Telemetry.sendLogTelemetry,
+              "module_load_fail",
+              module.name,
+              e.stack
+            );
+          }
+
+          if (loadedCount == modulesToEnable.length) {
+            info(
+              color.blue.bold(
+                `Injection took ${Date.now() - startGlobalTime} ms`
+              )
+            );
+          }
+        }
+      }
+    }
+    exports.loadModules = loadModules;
+    const properModuleNames = {
+      OverworldBlockNonShiny: "BlockNonShiny",
+      StatsRaidMovesets: "BossMovesets",
+      CooldownTimer: "CooldownTracker",
+      SelfEggIncubator: "Eggspresso",
+      CosmeticIncognitoMode: "IncognitoMode",
+      EncounterInstantResult: "InstantCatch",
+      OverworldQuickSpin: "InstantSpin",
+      SelfItemCleaner: "MagicBag",
+      EncounterPerfectedThrow: "PerfectedThrow",
+      SelfPerformanceMode: "PerformanceMode",
+      EncounterAutoBerry: "PinapMaster",
+      CosmeticQuestSpoiler: "QuestTweaks",
+      PackRaid: "RaidPack",
+      OverworldPokemonScanner: "ShinyScanner",
+      EncounterSkipIntro: "SkipEncounterIntro",
+      OverworldIncreaseRadius: "SpawnBooster",
+      PackSpeed: "FirstAidKit",
+      ProfileInstantGifts: "SwiftGift",
+      StatsNameplate: "IVsNameplate",
+      StatsToasts: "IVsToast",
+      InventoryStatsRename: "IVsInventory",
+      SelfBuddyInteraction: "Tamagotchi",
+      SelfTransferOnCatch: "TransferOnCatch",
+    };
+    function dbNameToModuleName(name) {
+      return properModuleNames[name] ? properModuleNames[name] : name;
+    }
+    function getModulesToEnable(
+      selectedModules,
+      UserData,
+      loadAllModules = false
+    ) {
+      let modulesToEnable;
+
+      if (UserData.availableModules.length == 0 && loadAllModules) {
+        warn(
+          color.red.bold(
+            "[WARNING] : There are no modules enabled, please comment out a tier in `src/tiers.js` to get started"
+          )
+        );
+      }
+
+      if (loadAllModules) {
+        modulesToEnable = UserData.availableModules;
+        UserData.enabledModules = modulesToEnable.map((m) => m.name);
+      } else {
+        modulesToEnable = selectedModules.map((name) => {
+          name = dbNameToModuleName(name);
+          const module = UserData.availableModules.find(
+            (mod) => mod.name == name
+          );
+
+          if (!module) {
+            warn(color.red.bold(`[WARNING] : Module "${name}" not found`));
+          }
+
+          return module;
+        });
+
+        UserData.enabledModules = selectedModules;
+      }
+
+      const moduleOrder = ["BetaTestingModule", "PerformanceMode"];
+
+      modulesToEnable.sort((a, b) => {
+        const aIndex = moduleOrder.indexOf(a.name);
+        const bIndex = moduleOrder.indexOf(b.name);
+        return (
+          (-1 === aIndex ? Infinity : aIndex) -
+          (-1 === bIndex ? Infinity : bIndex)
+        );
+      });
+
+      return modulesToEnable;
+    }
+    exports.getModulesToEnable = getModulesToEnable;
+  }).call(this);
+}).call(this, require("timers").setImmediate);

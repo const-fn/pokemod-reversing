@@ -1,0 +1,868 @@
+import PogoUtils_1 from "../../main/utils/PogoUtils";
+import FlappyHankeSprites_1 from "./FlappyHankeSprites";
+import { oneLineMedium } from "../../main/utils/Toast";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../../main/utils/ModuleBase"));
+const UnityUtils_1 = __importDefault(require("../../main/utils/UnityUtils"));
+
+const PersistentPrefs_1 = __importDefault(
+  require("../../main/utils/PersistentPrefs")
+);
+
+const UserData_1 = __importDefault(require("../../main/utils/UserData"));
+const ShinyConverter_1 = __importDefault(require("./ShinyConverter"));
+class FlappyThing2024 extends ModuleBase_1.default {
+  constructor() {
+    super();
+    this._DittoPlugin = undefined;
+    this._GradientHelper = undefined;
+    this.state = "closed";
+    this.updateAttach = undefined;
+    this.flappyThingRTR = undefined;
+    this.backBtnGO = undefined;
+    this.flapBtnGO = undefined;
+    this.thingImg = undefined;
+    this.mmbImage = undefined;
+    this.text = undefined;
+    this.pipes = [];
+    this.bgs = [];
+    this.gravity = 1800;
+    this.flightOnTap = 600;
+    this.terminalVelocity = -800;
+    this.terminalVelocityOnCollision = -2000 /* -2e3 */;
+    this.pipeSpeed = 500;
+    this.frameDelta = 1;
+    this.flight = this.flightOnTap;
+    this.highScore = 0;
+    this.score = 0;
+    this.pipeS = 0;
+    this.startTS = 0;
+    this.shiny = false;
+    this.forceShiny = false;
+    this.menu = undefined;
+    this.shinyConverter = undefined;
+    this.thingDot = undefined;
+  }
+  init() {
+    super.init();
+
+    this._DittoPlugin = ditto_1.default.use(
+      "Niantic.Platform.Ditto.Plugin.DittoPlugin"
+    );
+
+    this._GradientHelper = ditto_1.default.use("GradientHelper");
+
+    PogoUtils_1.PogoUtils.addButtonToMainMenu(
+      "flappy_thing_mmb",
+      "Flappy Hanke",
+      () => {
+        this.openGame();
+      },
+      (image) => {
+        this.mmbImage = image;
+
+        this.requestAndSetSprite((sp) => {
+          this.mmbImage.set_overrideSprite(sp);
+        });
+      }
+    );
+
+    PogoUtils_1.PogoUtils.addCheatCode("I LOVE HANKE", () => {
+      this.forceShiny = true;
+      oneLineMedium("<3");
+    });
+
+    this.shinyConverter = new ShinyConverter_1.default();
+    this.shinyConverter.init();
+
+    this.highScore = PersistentPrefs_1.default.get(
+      `${UserData_1.default.username}_hanke_highscore`,
+      0
+    );
+
+    this.shinyConverter.unlocked = PersistentPrefs_1.default.get(
+      `${UserData_1.default.username}_hanke2024_unlocked`,
+      false
+    );
+
+    UserData_1.default.setCallbackForOnUserChange(() => {
+      this.highScore = PersistentPrefs_1.default.get(
+        `${UserData_1.default.username}_hanke_highscore`,
+        0
+      );
+
+      this.shinyConverter.unlocked = PersistentPrefs_1.default.get(
+        `${UserData_1.default.username}_hanke2024_unlocked`,
+        false
+      );
+    });
+  }
+  openGame() {
+    const menu = new PogoUtils_1.PogoUtils.menu("flappy_thing_menu");
+    this.menu = menu;
+
+    menu.setTitle(
+      `<color=#FFFFFF>HAPPY BD HANKE! </color><color=#ff0000>a&</color><color=#FFFFFF>\nHIGHSCORE: ${this.highScore}</color>`
+    );
+
+    menu.postProcessCallback = () => {
+      for (let i = 0; i < menu.viewportContent.GetChildCount(); i++) {
+        const child = menu.viewportContent.GetChild(i);
+        const childGameObject = child.base.base.get_gameObject();
+        childGameObject.set_active(false);
+      }
+
+      const bgColor = UnityUtils_1.default.Color.$new(
+        0.443137,
+        0.772549,
+        0.815686,
+        1
+      );
+
+      const gradient = this._GradientHelper.CreateTwoColorGradient(
+        bgColor,
+        bgColor
+      );
+
+      menu.menuBg.SetGradient(gradient, true);
+      const viewContentRTR = menu.settingsMenuTransform.GetChild(0);
+      const backBtn = viewContentRTR.base.Find("Btn_Back");
+      if (!backBtn) {
+        return void error(`"Btn_Back" not found.`);
+      }
+      const prefabRTR = UnityUtils_1.default.Object.Instantiate(
+        backBtn.base,
+        viewContentRTR.base
+      );
+      prefabRTR.set_anchoredPosition(
+        UnityUtils_1.default.Vector2.$new(3000 /* 3e3 */, 0)
+      );
+      const prefabGO = prefabRTR.base.base.get_gameObject();
+
+      const prefabBtn = prefabGO.GetComponentInChildren(
+        UnityUtils_1.default.UI.Button.typeof
+      );
+
+      prefabBtn.m_OnClick = null;
+      UnityUtils_1.default.Object.Destroy(prefabBtn);
+
+      const bgPrefab = UnityUtils_1.default.Object.Instantiate(
+        prefabRTR.base,
+        viewContentRTR.base
+      );
+
+      const bgGO = bgPrefab.base.base.get_gameObject();
+
+      const bgImg = bgGO.GetComponentInChildren(
+        UnityUtils_1.default.UI.Image.typeof,
+        true
+      );
+
+      const bgSprite = this.getSprite("bg");
+      bgImg.set_sprite(bgSprite);
+      bgPrefab.set_sizeDelta(UnityUtils_1.default.Vector2.$new(276, 228));
+
+      bgPrefab.set_anchoredPosition(
+        UnityUtils_1.default.Vector2.$new(3000 /* 3e3 */, 0)
+      );
+
+      this.bgs = [
+        UnityUtils_1.default.Object.Instantiate(
+          bgPrefab.base,
+          viewContentRTR.base
+        ),
+        UnityUtils_1.default.Object.Instantiate(
+          bgPrefab.base,
+          viewContentRTR.base
+        ),
+        UnityUtils_1.default.Object.Instantiate(
+          bgPrefab.base,
+          viewContentRTR.base
+        ),
+        UnityUtils_1.default.Object.Instantiate(
+          bgPrefab.base,
+          viewContentRTR.base
+        ),
+        UnityUtils_1.default.Object.Instantiate(
+          bgPrefab.base,
+          viewContentRTR.base
+        ),
+        UnityUtils_1.default.Object.Instantiate(
+          bgPrefab.base,
+          viewContentRTR.base
+        ),
+      ];
+
+      this.bgs[0].set_anchoredPosition(
+        UnityUtils_1.default.Vector2.$new(-300, -10)
+      );
+
+      this.bgs[1].set_anchoredPosition(
+        UnityUtils_1.default.Vector2.$new(-24, -10)
+      );
+
+      this.bgs[2].set_anchoredPosition(
+        UnityUtils_1.default.Vector2.$new(252, -10)
+      );
+
+      this.bgs[3].set_anchoredPosition(
+        UnityUtils_1.default.Vector2.$new(528, -10)
+      );
+
+      this.bgs[4].set_anchoredPosition(
+        UnityUtils_1.default.Vector2.$new(804, -10)
+      );
+
+      this.bgs[5].set_anchoredPosition(
+        UnityUtils_1.default.Vector2.$new(1080, -10)
+      );
+
+      this.flappyThingRTR = UnityUtils_1.default.Object.Instantiate(
+        prefabRTR.base,
+        viewContentRTR.base
+      );
+
+      this.flappyThingRTR.set_anchoredPosition(
+        UnityUtils_1.default.Vector2.$new(0, 500)
+      );
+
+      this.flappyThingRTR.base.set_localScale(
+        UnityUtils_1.default.Vector3.$new(-1, 1, 1)
+      );
+
+      const flappyThingGO = this.flappyThingRTR.base.base.get_gameObject();
+
+      this.thingImg = flappyThingGO.GetComponentInChildren(
+        UnityUtils_1.default.UI.Image.typeof,
+        true
+      );
+
+      this.thingImg.set_overrideSprite(this.getSprite("hanke"));
+
+      this.requestAndSetSprite((sp) => {
+        this.thingImg.set_overrideSprite(sp);
+
+        if (this.shiny) {
+          this.flappyThingRTR.set_sizeDelta(
+            UnityUtils_1.default.Vector2.$new(64, 128)
+          );
+        } else {
+          this.flappyThingRTR.set_sizeDelta(
+            UnityUtils_1.default.Vector2.$new(64, 64)
+          );
+        }
+
+        if (this.mmbImage) {
+          this.mmbImage.set_overrideSprite(sp);
+        }
+      });
+
+      const pipePrefab = UnityUtils_1.default.Object.Instantiate(
+        prefabRTR.base,
+        viewContentRTR.base
+      );
+
+      const pipeGO = pipePrefab.base.base.get_gameObject();
+
+      const pipeImg = pipeGO.GetComponentInChildren(
+        UnityUtils_1.default.UI.Image.typeof,
+        true
+      );
+
+      const pipeSprite = this.getSprite("pipe");
+      pipeImg.set_sprite(pipeSprite);
+      pipePrefab.set_sizeDelta(UnityUtils_1.default.Vector2.$new(78, 480));
+
+      const pipeExtPrefab = UnityUtils_1.default.Object.Instantiate(
+        prefabRTR.base,
+        viewContentRTR.base
+      );
+
+      const pipeExtGO = pipeExtPrefab.base.base.get_gameObject();
+
+      const pipeExtImg = pipeExtGO.GetComponentInChildren(
+        UnityUtils_1.default.UI.Image.typeof,
+        true
+      );
+
+      const pipeExtSprite = this.getSprite("pipeExt");
+      pipeExtImg.set_sprite(pipeExtSprite);
+
+      pipeExtPrefab.set_sizeDelta(
+        UnityUtils_1.default.Vector2.$new(78, 3000 /* 3e3 */)
+      );
+
+      this.pipes[0] = {
+        bot: UnityUtils_1.default.Object.Instantiate(
+          pipePrefab.base,
+          viewContentRTR.base
+        ),
+        top: UnityUtils_1.default.Object.Instantiate(
+          pipePrefab.base,
+          viewContentRTR.base
+        ),
+        topExt: UnityUtils_1.default.Object.Instantiate(
+          pipeExtPrefab.base,
+          viewContentRTR.base
+        ),
+        botExt: UnityUtils_1.default.Object.Instantiate(
+          pipeExtPrefab.base,
+          viewContentRTR.base
+        ),
+      };
+
+      this.pipes[1] = {
+        bot: UnityUtils_1.default.Object.Instantiate(
+          pipePrefab.base,
+          viewContentRTR.base
+        ),
+        top: UnityUtils_1.default.Object.Instantiate(
+          pipePrefab.base,
+          viewContentRTR.base
+        ),
+        topExt: UnityUtils_1.default.Object.Instantiate(
+          pipeExtPrefab.base,
+          viewContentRTR.base
+        ),
+        botExt: UnityUtils_1.default.Object.Instantiate(
+          pipeExtPrefab.base,
+          viewContentRTR.base
+        ),
+      };
+
+      this.pipes[2] = {
+        bot: UnityUtils_1.default.Object.Instantiate(
+          pipePrefab.base,
+          viewContentRTR.base
+        ),
+        top: UnityUtils_1.default.Object.Instantiate(
+          pipePrefab.base,
+          viewContentRTR.base
+        ),
+        topExt: UnityUtils_1.default.Object.Instantiate(
+          pipeExtPrefab.base,
+          viewContentRTR.base
+        ),
+        botExt: UnityUtils_1.default.Object.Instantiate(
+          pipeExtPrefab.base,
+          viewContentRTR.base
+        ),
+      };
+
+      this.pipes[0].top.base.set_localScale(
+        UnityUtils_1.default.Vector3.$new(1, -1, 1)
+      );
+
+      this.pipes[0].topExt.base.set_localScale(
+        UnityUtils_1.default.Vector3.$new(1, -1, 1)
+      );
+
+      this.pipes[1].top.base.set_localScale(
+        UnityUtils_1.default.Vector3.$new(1, -1, 1)
+      );
+
+      this.pipes[1].topExt.base.set_localScale(
+        UnityUtils_1.default.Vector3.$new(1, -1, 1)
+      );
+
+      this.pipes[2].top.base.set_localScale(
+        UnityUtils_1.default.Vector3.$new(1, -1, 1)
+      );
+
+      this.pipes[2].topExt.base.set_localScale(
+        UnityUtils_1.default.Vector3.$new(1, -1, 1)
+      );
+
+      this.resetPipes();
+      const flapBtn = UnityUtils_1.default.Object.Instantiate(
+        backBtn.base,
+        viewContentRTR.base
+      );
+      flapBtn.set_anchoredPosition(UnityUtils_1.default.Vector2.$new(0, 0));
+      flapBtn.set_sizeDelta(
+        UnityUtils_1.default.Vector2.$new(2000 /* 2e3 */, 2000 /* 2e3 */)
+      );
+      this.flapBtnGO = flapBtn.base.base.get_gameObject();
+
+      const flapBtnImg = this.flapBtnGO.GetComponentInChildren(
+        UnityUtils_1.default.UI.Image.typeof,
+        true
+      );
+
+      const tColor = UnityUtils_1.default.Color.$new(1, 1, 1, 0);
+      flapBtnImg.base.base.set_color(tColor);
+
+      const flapBtnButton = this.flapBtnGO.GetComponentInChildren(
+        UnityUtils_1.default.UI.Button.typeof
+      );
+
+      const event = UnityUtils_1.default.makeButtonClickedEvent(
+        `flappy_thing_flap`,
+        () => {
+          switch (this.state) {
+            case "running": {
+              this.flight = this.flightOnTap;
+              break;
+            }
+            case "ready": {
+              this.state = "running";
+              this.backBtnGO.set_active(false);
+              this.startTS = Date.now();
+              const self = this;
+              this.updateAttach = this._DittoPlugin.Update.attach({
+                onEnter() {
+                  self.frameDelta = UnityUtils_1.default.Time.get_deltaTime();
+
+                  switch (self.state) {
+                    case "running": {
+                      const thingY = self.applyGravityToThing(
+                        self.terminalVelocity
+                      );
+
+                      self.pipes.forEach((pipeSet) => {
+                        const pipePos = pipeSet.bot.get_anchoredPosition();
+
+                        if (
+                          -70 <= pipePos.x &&
+                          pipePos.x <= 66 &&
+                          (thingY <= pipePos.y + 480 ||
+                            thingY >= pipePos.y + pipeSet.gate - 480 - 50)
+                        ) {
+                          self.state = "collision";
+                          self.flight > 0 && (self.flight = 0);
+
+                          self.flappyThingRTR.set_anchoredPosition(
+                            UnityUtils_1.default.Vector2.$new(0, thingY + 64)
+                          );
+
+                          self.flappyThingRTR.base.set_localScale(
+                            UnityUtils_1.default.Vector3.$new(-1, -1, 1)
+                          );
+
+                          self.flapBtnGO.set_active(false);
+                        }
+
+                        if (-60 > pipePos.x && pipeSet.point) {
+                          pipeSet.point = false;
+                          self.score += self.shiny ? 2 : 1;
+
+                          self.titleText.set_text(
+                            `<color=#FFFFFF>HAPPY BD HANKE! </color><color=#ff0000>a&</color><color=#FFFFFF>\nSCORE: </color><color=#${
+                              self.shiny ? "FFCC00" : "FFFFFF"
+                            }>${self.score}</color>`
+                          );
+                        }
+
+                        if (-500 > pipePos.x) {
+                          const xrand = self.randomIntFromInterval(-100, 200);
+
+                          const yrand = self.randomIntFromInterval(-100, 250);
+                          pipeSet.gate = self.randomIntFromInterval(1200, 1500);
+                          let newPos = self.getMostRightPipePos() + 500 + xrand;
+
+                          if (newPos < 500) {
+                            newPos = 600 + xrand;
+                          }
+
+                          pipeSet.bot.set_anchoredPosition(
+                            UnityUtils_1.default.Vector2.$new(newPos, yrand)
+                          );
+
+                          pipeSet.botExt.set_anchoredPosition(
+                            UnityUtils_1.default.Vector2.$new(
+                              newPos,
+                              yrand - 2999
+                            )
+                          );
+
+                          pipeSet.top.set_anchoredPosition(
+                            UnityUtils_1.default.Vector2.$new(
+                              newPos,
+                              yrand + pipeSet.gate
+                            )
+                          );
+
+                          pipeSet.topExt.set_anchoredPosition(
+                            UnityUtils_1.default.Vector2.$new(
+                              newPos,
+                              yrand + pipeSet.gate + 2999
+                            )
+                          );
+
+                          pipeSet.point = true;
+                          self.pipeS += 1;
+                        } else {
+                          pipeSet.bot.set_anchoredPosition(
+                            UnityUtils_1.default.Vector2.$new(
+                              pipePos.x - self.pipeSpeed * self.frameDelta,
+                              pipePos.y
+                            )
+                          );
+
+                          pipeSet.botExt.set_anchoredPosition(
+                            UnityUtils_1.default.Vector2.$new(
+                              pipePos.x - self.pipeSpeed * self.frameDelta,
+                              pipePos.y - 2999
+                            )
+                          );
+
+                          pipeSet.top.set_anchoredPosition(
+                            UnityUtils_1.default.Vector2.$new(
+                              pipePos.x - self.pipeSpeed * self.frameDelta,
+                              pipePos.y + pipeSet.gate
+                            )
+                          );
+
+                          pipeSet.topExt.set_anchoredPosition(
+                            UnityUtils_1.default.Vector2.$new(
+                              pipePos.x - self.pipeSpeed * self.frameDelta,
+                              pipePos.y + pipeSet.gate + 2999
+                            )
+                          );
+                        }
+                      });
+
+                      self.bgs.forEach((bg) => {
+                        const bgPos = bg.get_anchoredPosition();
+
+                        if (-500 > bgPos.x) {
+                          bg.set_anchoredPosition(
+                            UnityUtils_1.default.Vector2.$new(
+                              bgPos.x + (1380 - 150 * self.frameDelta),
+                              bgPos.y
+                            )
+                          );
+                        } else {
+                          bg.set_anchoredPosition(
+                            UnityUtils_1.default.Vector2.$new(
+                              bgPos.x - 150 * self.frameDelta,
+                              bgPos.y
+                            )
+                          );
+                        }
+                      });
+
+                      break;
+                    }
+                    case "collision": {
+                      self.applyGravityToThing(
+                        self.terminalVelocityOnCollision
+                      );
+                      break;
+                    }
+                    case "restart": {
+                      self.updateAttach.detach();
+                      self.state = "stopped";
+                      self.backBtnGO.set_active(true);
+
+                      self.flappyThingRTR.set_anchoredPosition(
+                        UnityUtils_1.default.Vector2.$new(0, 500)
+                      );
+
+                      self.flappyThingRTR.base.set_localScale(
+                        UnityUtils_1.default.Vector3.$new(-1, 1, 1)
+                      );
+
+                      self.flight = self.flightOnTap;
+                      self.resetPipes();
+                      self.flapBtnGO.set_active(true);
+
+                      if (!self.shinyConverter.unlocked && self.score > 19) {
+                        self.shinyConverter.unlocked = true;
+
+                        info(
+                          color.white.bgMagenta("Shiny Converter unlocked!")
+                        );
+
+                        PersistentPrefs_1.default.set(
+                          `${UserData_1.default.username}_hanke2024_unlocked`,
+                          true
+                        );
+
+                        ditto_1.default.Telemetry.sendLogTelemetry(
+                          "shinify2024_unlocked",
+                          ""
+                        );
+
+                        oneLineMedium("Shiny Converter unlocked!");
+                      }
+
+                      if (self.score > self.highScore) {
+                        info(color.yellow(`[FT] New Highscore: ${self.score}`));
+
+                        self.highScore = self.score;
+
+                        PersistentPrefs_1.default.set(
+                          `${UserData_1.default.username}_hanke_highscore`,
+                          self.highScore
+                        );
+
+                        self.score > 10 &&
+                          ditto_1.default.Telemetry.sendLogTelemetry(
+                            "flappy_highscore",
+                            `S: ${self.score}, P: ${self.pipeS}, T: ${
+                              Date.now() - self.startTS
+                            }`
+                          );
+                      }
+
+                      self.score = 0;
+                      self.pipeS = 0;
+                      self.startTS = 0;
+
+                      self.titleText.set_text(
+                        `<color=#FFFFFF>HAPPY BD HANKE! </color><color=#ff0000>a&</color><color=#FFFFFF>\nHIGHSCORE: ${self.highScore}</color>`
+                      );
+
+                      self.requestAndSetSprite((sp) => {
+                        self.thingImg.set_overrideSprite(sp);
+
+                        if (self.shiny) {
+                          self.flappyThingRTR.set_sizeDelta(
+                            UnityUtils_1.default.Vector2.$new(64, 128)
+                          );
+                        } else {
+                          self.flappyThingRTR.set_sizeDelta(
+                            UnityUtils_1.default.Vector2.$new(64, 64)
+                          );
+                        }
+
+                        if (self.mmbImage) {
+                          self.mmbImage.set_overrideSprite(sp);
+                        }
+                      });
+
+                      self.state = "ready";
+                      break;
+                    }
+                    default: {
+                      self.updateAttach.detach();
+                      self.score = 0;
+                      self.pipeS = 0;
+                      break;
+                    }
+                  }
+                },
+              });
+              break;
+            }
+          }
+        }
+      );
+
+      flapBtnButton.m_OnClick = event;
+      const backBtnClone = UnityUtils_1.default.Object.Instantiate(
+        backBtn.base,
+        viewContentRTR.base
+      );
+      backBtn.base.base.get_gameObject().set_active(false);
+      this.backBtnGO = backBtnClone.base.base.get_gameObject();
+
+      const titleRTR = menu.settingsMenuTransform.GetChild(0).base.GetChild(1);
+
+      const titleGO = titleRTR.base.base.get_gameObject();
+
+      const newTitleRTR = UnityUtils_1.default.Object.Instantiate(
+        titleRTR,
+        viewContentRTR.base
+      );
+
+      titleGO.set_active(false);
+      const newTitleGO = newTitleRTR.base.base.get_gameObject();
+
+      const newTitleLabel = newTitleGO.GetComponentInChildren(
+        UnityUtils_1.default.UI.Text.typeof
+      );
+
+      this.titleText =
+        newTitleLabel.$className == "HoloText"
+          ? newTitleLabel.base
+          : newTitleLabel.$className == "I18nText"
+          ? newTitleLabel.base.base
+          : newTitleLabel;
+
+      this.titleText.set_supportRichText(true);
+    };
+
+    const oAction = UnityUtils_1.default.makeAction(
+      "flappy_thing_on_open",
+      "System.Action",
+      () => {
+        this.state = "ready";
+      }
+    );
+    menu.setOpenCompletedCallback(oAction);
+    const dAction = UnityUtils_1.default.makeAction(
+      "flappy_thing_on_dismiss",
+      "System.Action",
+      () => {
+        this.state = "closed";
+        this.score = 0;
+        this.pipeS = 0;
+      }
+    );
+    menu.setDismissedCallback(dAction);
+    menu.open();
+  }
+  requestAndSetSprite(callback) {
+    if (this.forceShiny) {
+      this.forceShiny = false;
+      this.shiny = true;
+    } else {
+      this.shiny = Math.random() < 0.01;
+    }
+
+    let spriteName = "hanke";
+
+    if (this.shiny) {
+      if (Math.random() < 0.005) {
+        info(`[FT] ${color.rainbow("RARE SHINY HANKE!")}`);
+        spriteName = "bdRare";
+      } else {
+        info(`[FT] ${color.rainbow("SHINY HANKE!")}`);
+        spriteName = Math.random() > 0.5 ? "bdAlt" : "bd";
+      }
+    } else if (Math.random() > 0.5) {
+      spriteName = "hankeAlt";
+    }
+
+    callback(this.getSprite(spriteName));
+  }
+  resetPipes() {
+    const pipe0x = this.randomIntFromInterval(500, 800);
+    const pipe0y = this.randomIntFromInterval(-100, 250);
+
+    this.pipes[0].bot.set_anchoredPosition(
+      UnityUtils_1.default.Vector2.$new(pipe0x, pipe0y)
+    );
+
+    this.pipes[0].botExt.set_anchoredPosition(
+      UnityUtils_1.default.Vector2.$new(pipe0x, pipe0y - 2999)
+    );
+
+    this.pipes[0].gate = this.randomIntFromInterval(1200, 1500);
+
+    this.pipes[0].top.set_anchoredPosition(
+      UnityUtils_1.default.Vector2.$new(pipe0x, pipe0y + this.pipes[0].gate)
+    );
+
+    this.pipes[0].topExt.set_anchoredPosition(
+      UnityUtils_1.default.Vector2.$new(
+        pipe0x,
+        pipe0y + this.pipes[0].gate + 2999
+      )
+    );
+
+    this.pipes[0].point = true;
+    const pipe1x = this.randomIntFromInterval(1000 /* 1e3 */, 1300);
+    const pipe1y = this.randomIntFromInterval(-100, 250);
+
+    this.pipes[1].bot.set_anchoredPosition(
+      UnityUtils_1.default.Vector2.$new(pipe1x, pipe1y)
+    );
+
+    this.pipes[1].botExt.set_anchoredPosition(
+      UnityUtils_1.default.Vector2.$new(pipe1x, pipe1y - 2999)
+    );
+
+    this.pipes[1].gate = this.randomIntFromInterval(1200, 1500);
+
+    this.pipes[1].top.set_anchoredPosition(
+      UnityUtils_1.default.Vector2.$new(pipe1x, pipe1y + this.pipes[1].gate)
+    );
+
+    this.pipes[1].topExt.set_anchoredPosition(
+      UnityUtils_1.default.Vector2.$new(
+        pipe1x,
+        pipe1y + this.pipes[0].gate + 2999
+      )
+    );
+
+    this.pipes[1].point = true;
+    const pipe2x = this.randomIntFromInterval(1500, 1700);
+    const pipe2y = this.randomIntFromInterval(-100, 250);
+
+    this.pipes[2].bot.set_anchoredPosition(
+      UnityUtils_1.default.Vector2.$new(pipe2x, pipe2y)
+    );
+
+    this.pipes[2].botExt.set_anchoredPosition(
+      UnityUtils_1.default.Vector2.$new(pipe2x, pipe2y - 2999)
+    );
+
+    this.pipes[2].gate = this.randomIntFromInterval(1200, 1500);
+
+    this.pipes[2].top.set_anchoredPosition(
+      UnityUtils_1.default.Vector2.$new(pipe2x, pipe2y + this.pipes[2].gate)
+    );
+
+    this.pipes[2].topExt.set_anchoredPosition(
+      UnityUtils_1.default.Vector2.$new(
+        pipe2x,
+        pipe2y + this.pipes[0].gate + 2999
+      )
+    );
+
+    this.pipes[2].point = true;
+  }
+  randomIntFromInterval(min, max) {
+    return Math.floor(Math.random() * (max - min + 1) + min);
+  }
+  getMostRightPipePos() {
+    let pos = -1000; /* -1e3 */
+
+    this.pipes.forEach((pipeSet) => {
+      const pipePos = pipeSet.bot.get_anchoredPosition();
+
+      if (pipePos.x > pos) {
+        pos = pipePos.x;
+      }
+    });
+
+    return pos;
+  }
+  applyGravityToThing(terminalVelocity) {
+    const thingPos = this.flappyThingRTR.get_anchoredPosition();
+
+    if (-100 > thingPos.y || thingPos.y > 1400) {
+      this.state = "restart";
+    }
+
+    this.flight -= this.frameDelta * this.gravity;
+
+    if (this.flight < terminalVelocity) {
+      this.flight = terminalVelocity;
+    }
+
+    const newY = thingPos.y + this.flight * this.frameDelta;
+
+    this.flappyThingRTR.set_anchoredPosition(
+      UnityUtils_1.default.Vector2.$new(0, newY)
+    );
+
+    return newY;
+  }
+  getSprite(name) {
+    const img = FlappyHankeSprites_1.ftSprites[name];
+
+    const imageBytes = UnityUtils_1.default.System.Convert.FromBase64String(
+      img.b64
+    );
+
+    const texture = UnityUtils_1.default.Texture2D.$new(img.w, img.h);
+    UnityUtils_1.default.ImageConversion.LoadImage(texture, imageBytes);
+    const rect = UnityUtils_1.default.Rect.$new(0, 0, img.w, img.h);
+    const vector2 = UnityUtils_1.default.Vector2.$new(0, 0);
+
+    const sprite = UnityUtils_1.default.Sprite.$new().Create(
+      texture,
+      rect,
+      vector2
+    );
+
+    return sprite;
+  }
+}
+export default FlappyThing2024;

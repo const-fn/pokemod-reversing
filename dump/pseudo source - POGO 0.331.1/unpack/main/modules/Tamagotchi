@@ -1,0 +1,499 @@
+import { oneLine } from "../utils/Toast";
+import PogoUtils_1 from "../utils/PogoUtils";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const I18n_1 = __importDefault(require("../utils/I18n"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const ObjectInstance_1 = __importDefault(require("../utils/ObjectInstance"));
+const UnityUtils_1 = __importDefault(require("../utils/UnityUtils"));
+const ITEM_RAZZ_BERRY = 701;
+const ITEM_NANAB_BERRY = 703;
+const ITEM_PINAP_BERRY = 705;
+const ITEM_GOLDEN_RAZZ_BERRY = 706;
+const ITEM_GOLDEN_PINAP_BERRY = 708;
+class Tamagotchi extends ModuleBase_1.default {
+  constructor() {
+    super();
+    this.buddyPokemon = undefined;
+    this.totalBuddyHearts = 0;
+    this.combatLeague = "";
+    this.showBerryNotification = true;
+    this.lastCheck = Date.now() - 1800000 + 30000 /* 3e4 */;
+    this.lastFeed = 0;
+    this.previousEmotionPoints = 0;
+    this.emotionPoints = 0;
+    this.fallbackItem = null;
+    this.buddyPokemonServiceInstance = undefined;
+    this.buddyRpcServiceInstance = undefined;
+    this.buddyItemBagImplyInstance = undefined;
+    this.pokemonBagImplInstance = undefined;
+    this.userPromptsServiceInstance = undefined;
+    this.rpcHandler = undefined;
+    this.playerService = undefined;
+  }
+  feed(itemId) {
+    const feedCount = [
+      ITEM_GOLDEN_RAZZ_BERRY,
+      ITEM_GOLDEN_PINAP_BERRY,
+    ].includes(itemId)
+      ? 1
+      : 3;
+    this.buddyRpcServiceInstance.value.Feed(itemId, feedCount);
+    this.logger.info(`Fed ${feedCount} berries to buddy`);
+    this.lastFeed = Date.now();
+    this.petAndSnapshot();
+  }
+  getBerryAndFeed() {
+    this.logger.info("Will feed!");
+
+    if (
+      this.buddyItemBagImplyInstance.value.GetItemCount(ITEM_RAZZ_BERRY) > 2
+    ) {
+      this.feed(ITEM_RAZZ_BERRY);
+    } else if (
+      this.buddyItemBagImplyInstance.value.GetItemCount(ITEM_NANAB_BERRY) > 2
+    ) {
+      this.feed(ITEM_NANAB_BERRY);
+    } else if (
+      this.buddyItemBagImplyInstance.value.GetItemCount(ITEM_PINAP_BERRY) > 2
+    ) {
+      this.feed(ITEM_PINAP_BERRY);
+    } else {
+      this.askForFallbackItemModal();
+      this.logger.info("You don't have enough berries to feed");
+    }
+  }
+  petAndSnapshot() {
+    this.buddyRpcServiceInstance.value.Pet();
+    this.logger.info("Petted buddy");
+    const arPhotoRpcService = ditto_1.default.use("ARPhotoRpcService").$new();
+    arPhotoRpcService.rpcHandler = this.rpcHandler;
+    arPhotoRpcService.playerService = this.playerService;
+    const ts = Date.now();
+    this.logger.info("Checking Photobomb");
+    const checkPhotobombOutProtoPromise = arPhotoRpcService.CheckPhotobomb(
+      this.buddyPokemon.buddyPokemonId_,
+      3
+    );
+    checkPhotobombOutProtoPromise.base.Then(
+      UnityUtils_1.default.makeAction(
+        `CheckPhotobomb_${ts}`,
+        "System.Action",
+        () => {
+          const endSession = () => {
+            this.logger.info("Completing Snapshot Session");
+            checkPhotobombOutProtoPromise.$dispose();
+
+            arPhotoRpcService.CompleteSnapshotSession(
+              this.buddyPokemon.buddyPokemonId_,
+              1,
+              ts - 10000 /* 1e4 */
+            );
+
+            arPhotoRpcService.$dispose();
+            info("Took snapshot with buddy");
+          };
+
+          const checkPhotobombOutProto =
+            checkPhotobombOutProtoPromise.base.completedValue;
+
+          return checkPhotobombOutProto
+            ? void (checkPhotobombOutProto.encounterId_ &&
+                checkPhotobombOutProto.encounterId_ != 0 &&
+                (this.logger.info("Confirming Photobomb"),
+                arPhotoRpcService.ConfirmPhotobomb(
+                  checkPhotobombOutProto.encounterId_
+                )),
+              endSession())
+            : (this.logger.warn("CheckPhotobombOutProto is empty"),
+              void endSession());
+        },
+        true
+      )
+    );
+  }
+  askForFallbackItemModal() {
+    return this.fallbackItem === 69420 ||
+      this.userPromptsServiceInstance.value.HasActiveModal()
+      ? undefined
+      : this.fallbackItem &&
+        this.buddyItemBagImplyInstance.value.GetItemCount(this.fallbackItem)
+      ? (this.feed(this.fallbackItem), void this.petAndSnapshot())
+      : void this.showBerryModal(false);
+  }
+  showBerryModal(isForcedModal = false) {
+    const buttons = [
+      {
+        name: I18n_1.default.getText("modals.buddyInteractions.dontUseAny"),
+        eventType: PogoUtils_1.ButtonEvents.BUTTON_EVENT_TYPE_OK,
+        callback: () => {
+          this.fallbackItem = 69420;
+        },
+      },
+    ];
+
+    const goldenRazzCount = this.buddyItemBagImplyInstance.value.GetItemCount(
+      ITEM_GOLDEN_RAZZ_BERRY
+    );
+
+    const goldenPinapCount = this.buddyItemBagImplyInstance.value.GetItemCount(
+      ITEM_GOLDEN_PINAP_BERRY
+    );
+
+    if (goldenRazzCount || isForcedModal) {
+      buttons.push({
+        name: I18n_1.default.unity.getItemNameFromId(ITEM_GOLDEN_RAZZ_BERRY),
+        eventType: PogoUtils_1.ButtonEvents.BUTTON_EVENT_TYPE_OPTION_A,
+        callback: () => {
+          this.fallbackItem = ITEM_GOLDEN_RAZZ_BERRY;
+          this.feed(ITEM_GOLDEN_RAZZ_BERRY);
+          this.petAndSnapshot();
+        },
+      });
+    }
+
+    if (goldenPinapCount || isForcedModal) {
+      buttons.push({
+        name: I18n_1.default.unity.getItemNameFromId(ITEM_GOLDEN_PINAP_BERRY),
+        eventType: PogoUtils_1.ButtonEvents.BUTTON_EVENT_TYPE_OPTION_B,
+        callback: () => {
+          this.fallbackItem = ITEM_GOLDEN_PINAP_BERRY;
+          this.feed(ITEM_GOLDEN_PINAP_BERRY);
+          this.petAndSnapshot();
+        },
+      });
+    }
+
+    if (buttons.length < 2) {
+      return;
+    }
+
+    let message = "";
+
+    message = isForcedModal
+      ? I18n_1.default.getText("modals.buddyInteractions.forcedModalBody", {
+          forcedText:
+            this.fallbackItem && this.fallbackItem !== 69420
+              ? I18n_1.default.getText("modals.buddyInteractions.prevItem", {
+                  berry: I18n_1.default.unity.getItemNameFromId(
+                    this.fallbackItem
+                  ),
+                })
+              : "",
+        })
+      : I18n_1.default.getText("modals.buddyInteractions.notEnoughBerryBody", {
+          razz: I18n_1.default.unity.getItemNameFromId(ITEM_RAZZ_BERRY),
+          nanab: I18n_1.default.unity.getItemNameFromId(ITEM_NANAB_BERRY),
+          pinap: I18n_1.default.unity.getItemNameFromId(ITEM_PINAP_BERRY),
+          fallbackItem: this.fallbackItem
+            ? `, ${I18n_1.default.unity.getItemNameFromId(this.fallbackItem)}`
+            : "",
+        });
+
+    PogoUtils_1.PogoUtils.showWarningModal(
+      I18n_1.default.getText(
+        `modals.buddyInteractions.${
+          isForcedModal ? "forcedModalTitle" : "notEnoughBerryTitle"
+        }`
+      ),
+      message,
+      buttons
+    );
+  }
+  init() {
+    super.init();
+
+    this.buddyPokemonServiceInstance = new ObjectInstance_1.default(
+      "Niantic.Holoholo.Buddy.BuddyPokemonService",
+      "get_HasBuddy"
+    );
+
+    this.buddyRpcServiceInstance = new ObjectInstance_1.default(
+      "Niantic.Holoholo.Buddy.BuddyRpcService",
+      "Initialize"
+    );
+
+    this.buddyItemBagImplyInstance = new ObjectInstance_1.default(
+      "ItemBagImpl",
+      "$ctor"
+    );
+
+    this.pokemonBagImplInstance = new ObjectInstance_1.default(
+      "PokemonBagImpl",
+      "add_PokemonBagUpdated"
+    );
+
+    this.userPromptsServiceInstance = new ObjectInstance_1.default(
+      "Niantic.Holoholo.UI.UserPromptsService",
+      "ShowNumericalPicker"
+    );
+
+    this.logger = createLogger("Tamagotchi");
+    const self = this;
+    PogoUtils_1.PogoUtils.addCheatCode("berrynice", () => {
+      self.showBerryModal(true);
+    });
+    const InvasionCombatState = ditto_1.default.use(
+      "Niantic.Holoholo.Combat.Contexts.InvasionCombatState"
+    );
+    InvasionCombatState.StartCombatWithParty.attach({
+      onEnter(args) {
+        let _self$buddyPokemon;
+        let _self$buddyPokemon2;
+        let _self$buddyPokemon3;
+
+        self.logger.info(
+          color.gray(
+            `Invasion battle, buddyId: ${
+              null == (_self$buddyPokemon = self.buddyPokemon) ||
+              _self$buddyPokemon.buddyPokemonId_
+            }`
+          )
+        );
+
+        if (
+          !!(
+            null != (_self$buddyPokemon2 = self.buddyPokemon) &&
+            _self$buddyPokemon2.buddyPokemonId_
+          )
+        ) {
+          const mybuddyproto = self.pokemonBagImplInstance.value.GetPokemon(
+            null == (_self$buddyPokemon3 = self.buddyPokemon) ||
+              _self$buddyPokemon3.buddyPokemonId_
+          );
+          self.logger.info(color.gray(`got buddy: ${mybuddyproto}`));
+          args[0].SwapPokemonIntoSlot(mybuddyproto, 0);
+        }
+      },
+    });
+    const CombatLeagueState = ditto_1.default.use("CombatLeagueState");
+    CombatLeagueState.OnLeagueClicked.attach({
+      onEnter(args) {
+        self.combatLeague = args[0];
+      },
+    });
+    const NpcCombatState = ditto_1.default.use("NpcCombatState");
+    NpcCombatState.StartCombatWithParty.attach({
+      onEnter(args) {
+        let _self$buddyPokemon4;
+        let _self$buddyPokemon5;
+        let _self$buddyPokemon6;
+
+        self.logger.info(
+          color.gray(
+            `NPC battle, buddyId: ${
+              null == (_self$buddyPokemon4 = self.buddyPokemon) ||
+              _self$buddyPokemon4.buddyPokemonId_
+            }`
+          )
+        );
+
+        if (
+          !!(
+            null != (_self$buddyPokemon5 = self.buddyPokemon) &&
+            _self$buddyPokemon5.buddyPokemonId_
+          )
+        ) {
+          const mybuddyproto = self.pokemonBagImplInstance.value.GetPokemon(
+            null == (_self$buddyPokemon6 = self.buddyPokemon) ||
+              _self$buddyPokemon6.buddyPokemonId_
+          );
+          if (mybuddyproto) {
+            const mybuddyproto_cp = mybuddyproto.cp_;
+
+            if (
+              self.combatLeague == "COMBAT_LEAGUE_DEFAULT_GREAT" &&
+              mybuddyproto_cp > 1500
+            ) {
+              return void oneLine(
+                I18n_1.default.getText("toast.buddyInteractions.buddyCpTooHigh")
+              );
+            }
+
+            if (
+              self.combatLeague == "COMBAT_LEAGUE_DEFAULT_ULTRA" &&
+              mybuddyproto_cp > 2500
+            ) {
+              return void oneLine(
+                I18n_1.default.getText("toast.buddyInteractions.buddyCpTooHigh")
+              );
+            }
+
+            return void args[0].SwapPokemonIntoSlot(mybuddyproto, 0);
+          }
+        }
+      },
+    });
+    const BuddySwapState = ditto_1.default.use(
+      "Niantic.Holoholo.Buddy.BuddySwapState"
+    );
+    BuddySwapState.OnGoodbyeComplete.attach({
+      onLeave() {
+        this.SetPlayPokemon(this.playPokemon_);
+        this.ExitState();
+        this.OnWelcomeComplete();
+      },
+    });
+    const BuddyGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.Buddy.BuddyGuiController"
+    );
+    BuddyGuiController.UpdateValues.attach({
+      onLeave() {
+        this.nameText.set_text(
+          `${this.nameText.m_Text}\n${I18n_1.default.getText(
+            "modals.buddyInteractions.totalHearts"
+          )}: ${self.totalBuddyHearts}\n${I18n_1.default.getText(
+            "modals.buddyInteractions.excitementPoints"
+          )}: ${self.emotionPoints}/32`
+        );
+      },
+    });
+    const BuddyLevelUtil = ditto_1.default.use(
+      "Niantic.Holoholo.Buddy.BuddyLevelUtil"
+    );
+    BuddyLevelUtil.LevelPointsToFloat.attach({
+      onEnter(args) {
+        self.totalBuddyHearts = args[0];
+      },
+    });
+    const BuddyMapOutProto = ditto_1.default.use("BuddyMapOutProto");
+    BuddyMapOutProto[
+      "pb::Niantic.Protobuf.IBufferMessage.InternalMergeFrom"
+    ].attach({
+      onLeave() {
+        let _self$buddyPokemon7;
+        if (!self.buddyPokemonServiceInstance.getCurrentValue()) {
+          return void self.logger.warn(
+            "Buddy Pokemon Service is not available."
+          );
+        }
+        const buddyService = self.buddyPokemonServiceInstance.value;
+        const buddyPokemon = buddyService.get_BuddyPokemon();
+        if (!buddyPokemon) {
+          return void self.logger.warn(color.gray("no buddy Pokemon"));
+        }
+        if (
+          (null == (_self$buddyPokemon7 = self.buddyPokemon) ||
+            _self$buddyPokemon7.buddyPokemonId_.toString()) !=
+          (buddyPokemon == null || buddyPokemon.buddyPokemonId_.toString())
+        ) {
+          let _self$buddyPokemon8;
+
+          self.logger.info(
+            color.yellow(
+              `Buddy ID has changed (from ${
+                null == (_self$buddyPokemon8 = self.buddyPokemon) ||
+                _self$buddyPokemon8.buddyPokemonId_
+              } to ${buddyPokemon.buddyPokemonId_}), resetting stuff...`
+            )
+          );
+
+          self.buddyPokemon = buddyPokemon;
+          self.lastCheck = Date.now() - 1800000 + 30000 /* 3e4 */;
+          self.lastFeed = 0;
+          self.previousEmotionPoints = 0;
+          self.emotionPoints = 0;
+        }
+
+        if (!self.buddyRpcServiceInstance.getCurrentValue()) {
+          self.buddyRpcServiceInstance.value =
+            buddyService.buddyUtil.buddyRpcService;
+        }
+
+        if (!buddyService.rpcHandler || !buddyService.playerService) {
+          return void self.logger.warn(
+            "rpcHandler or playerService not found, skipping"
+          );
+        }
+
+        self.rpcHandler = buddyService.rpcHandler;
+        self.playerService = buddyService.playerService;
+        self.logger.debug(`lastCheck: ${self.lastCheck}`);
+
+        if (1800000 <= Date.now() - self.lastCheck) {
+          self.petAndSnapshot();
+          self.logger.debug("petAndSnapshot called");
+
+          if (!this.observedData_) {
+            return;
+          }
+
+          self.lastCheck = Date.now();
+          self.logger.debug("lastCheck updated");
+        }
+
+        if (!this.observedData_) {
+          return void self.logger.debug(
+            "buddyMapOutProto.observedData_ is null"
+          );
+        }
+        self.emotionPoints = this.observedData_.currentEmotionPoints_;
+        self.logger.debug(`emotionPoints: ${self.emotionPoints}`);
+        const buddyFeedStats = this.observedData_.buddyFeedStats_;
+        if (
+          buddyFeedStats &&
+          buddyFeedStats.preMapFullnessPercentage_ < 0.665 &&
+          600000 < Date.now() - self.lastFeed
+        ) {
+          if (
+            this.observedData_.currentEmotionPoints_ >= 32 ||
+            buddyFeedStats.poffinExpirationMs_.toNumber() > Date.now()
+          ) {
+            self.logger.info(color.cyan("Buddy is excited"));
+
+            const buddyTodayHearts_MapField =
+              this.observedData_.todayStatsShownHearts_
+                .buddyShownHeartsPerCategory_;
+
+            const feed_hearts = buddyTodayHearts_MapField.get_Item(1);
+            if (feed_hearts) {
+              let can_get_heart = false;
+              const heart_data = [];
+              const feed_hearts_buddyShownHeartTypes =
+                feed_hearts.buddyShownHeartTypes_;
+              for (let i = 0; i < feed_hearts_buddyShownHeartTypes.count; i++) {
+                heart_data.push(feed_hearts_buddyShownHeartTypes.array[i]);
+
+                if (feed_hearts_buddyShownHeartTypes.array[i] < 2) {
+                  can_get_heart = true;
+                }
+              }
+              self.logger.info(color.cyan(`treat hearts: ${heart_data}`));
+
+              if (can_get_heart) {
+                self.logger.info(color.cyanBright("We can get the heart"));
+                self.getBerryAndFeed();
+              }
+            }
+          } else {
+            if (buddyFeedStats.preMapFullnessPercentage_ < 0.1) {
+              self.getBerryAndFeed();
+            }
+          }
+
+          self.logger.info(
+            color.cyan(
+              `excitement points: ${this.observedData_.currentEmotionPoints_}, preMapFullnessPercentage: ${buddyFeedStats.preMapFullnessPercentage_}`
+            )
+          );
+
+          self.logger.info(
+            color.cyan(
+              `expirationMs: ${this.expirationMs_}, fullnessExpirationMs: ${buddyFeedStats.fullnessExpirationMs_}, poffinExpirationMs: ${buddyFeedStats.poffinExpirationMs_}`
+            )
+          );
+        }
+
+        if (
+          this.observedData_.buddyGiftPickedUp_.lootProto_ !== null ||
+          this.observedData_.buddyGiftPickedUp_.souvenir_ !== null
+        ) {
+          self.logger.info("Opening gift!");
+          buddyService.buddyUtil.buddyRpcService.OpenGift();
+        }
+      },
+    });
+  }
+}
+export default Tamagotchi;

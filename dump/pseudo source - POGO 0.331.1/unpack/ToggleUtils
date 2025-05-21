@@ -1,0 +1,128 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+class ToggleUtils {
+  static addToggle({ id, ...rest }) {
+    return this.idToDataMap.has(id)
+      ? void this.attachInstance({
+          id,
+          instance: rest.instance,
+          toggleGraphics: rest.toggleGraphics,
+        })
+      : void (rest.instance && this.instancetoIdmap.set(rest.instance, id),
+        this.idToDataMap.set(id, rest));
+  }
+  static attachInstance({ id, instance, toggleGraphics }) {
+    let _instance2;
+    instance = null == (_instance2 = instance) || _instance2.toString();
+    const instance = this.idToDataMap.get(id).instance;
+    this.idToDataMap.get(id).instance = instance;
+    this.idToDataMap.get(id).toggleGraphics = toggleGraphics;
+    this.instancetoIdmap.delete(instance);
+    this.instancetoIdmap.set(instance, id);
+  }
+  static addTogglesToGroup(groupName, data) {
+    const idStore = this.groupToIdMap.get(groupName) || [];
+
+    data.forEach(({ id, ...rest }) => {
+      if (!idStore.includes(id)) {
+        idStore.push(id);
+      }
+
+      this.idToDataMap.set(id, rest);
+    });
+
+    this.groupToIdMap.set(groupName, idStore);
+  }
+  static addToggleToGroup(groupName, { id, ...rest }) {
+    const idStore = this.groupToIdMap.get(groupName) || [];
+
+    if (!idStore.includes(id)) {
+      idStore.push(id);
+    }
+
+    this.idToDataMap.set(id, rest);
+    this.groupToIdMap.set(groupName, idStore);
+  }
+  static getTogglesFromGroup(gropupName) {
+    let _this$groupToIdMap$ge;
+    if (!this.groupToIdMap.has(gropupName)) {
+      return [];
+    }
+    const data = [];
+
+    if (null != (_this$groupToIdMap$ge = this.groupToIdMap.get(gropupName))) {
+      _this$groupToIdMap$ge.forEach((id) => {
+        data.push({ id, ...this.idToDataMap.get(id) });
+      });
+    }
+
+    return data;
+  }
+  static getToggleFromId(id) {
+    return (
+      this.idToDataMap.get(id) || {
+        name: "",
+        value: false,
+        instance: "",
+        callback: () => {},
+      }
+    );
+  }
+  static updateToggleValue(id, value, updateGraphics = false) {
+    if (
+      this.getToggleFromId(id).value !== value &&
+      ((this.getToggleFromId(id).value = value), updateGraphics)
+    ) {
+      try {
+        let _this$getToggleFromId;
+
+        if (
+          null !=
+          (_this$getToggleFromId = this.getToggleFromId(id).toggleGraphics)
+        ) {
+          _this$getToggleFromId.OnToggle(value);
+        }
+      } catch (error) {}
+    }
+  }
+  static isToggled(id) {
+    let _this$getToggleFromId2;
+    return !(
+      !(null != (_this$getToggleFromId2 = this.getToggleFromId(id))) ||
+      !_this$getToggleFromId2.value
+    );
+  }
+  static init() {
+    const self = this;
+    ditto_1.default
+      .use("UnityEngine.UI.Toggle")
+      .Set.replace(function (value, cb) {
+        const id = self.instancetoIdmap.get(this.$instance.toString());
+        if (!id && this.onValueChanged) {
+          return this.Set(value, cb);
+        }
+
+        const { name, description, callback, toggleGraphics } =
+          self.getToggleFromId(id);
+
+        const val =
+          callback == null || callback({ id, value, name, description });
+
+        if (typeof val == "boolean") {
+          value = val;
+        }
+
+        self.updateToggleValue(id, value);
+        this.Set(value, false);
+
+        if (toggleGraphics) {
+          toggleGraphics.OnToggle(value);
+        }
+      });
+  }
+}
+export { ToggleUtils };
+ToggleUtils.instancetoIdmap = new Map();
+ToggleUtils.idToDataMap = new Map();
+ToggleUtils.groupToIdMap = new Map();

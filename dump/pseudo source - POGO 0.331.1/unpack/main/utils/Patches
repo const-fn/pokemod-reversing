@@ -1,0 +1,391 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+function patchSnprintf() {
+  function patchSensitiveString(message) {
+    if (message.includes("frida")) {
+      console.warn(`[Sensitive] ${message}`);
+      message.replace("frida", "asdas");
+    }
+
+    return message;
+  }
+  const libc = Process.getModuleByName("libc.so");
+  const snprintfPtr = libc.getExportByName("snprintf");
+  const strlenPtr = libc.getExportByName("strlen");
+
+  const snprintf = new NativeFunction(snprintfPtr, "int", [
+    "pointer",
+    "ulong",
+    "pointer",
+    "pointer",
+  ]);
+
+  const strlen = new NativeFunction(strlenPtr, "ulong", ["pointer"]);
+  Interceptor.replace(
+    snprintfPtr,
+    new NativeCallback(
+      (str, size, arg2, arg3) => {
+        const retval = snprintf(str, size, arg2, arg3);
+        const patchedMessage = patchSensitiveString(str.readCString());
+
+        console.warn(
+          `size is ${size}, arg2 is ${arg2.readCString()}, arg3 is ${arg3}`
+        );
+
+        console.warn(`Patched to ${patchedMessage}`);
+        str.writeUtf8String(patchedMessage);
+        return retval;
+      },
+      "int",
+      ["pointer", "ulong", "pointer", "pointer"]
+    )
+  );
+}
+export { patchSnprintf };
+function patchOpenRead() {
+  const cmodule = new CModule(
+    `
+#include <stddef.h>
+#include <stdio.h>
+
+extern void * openInterceptor;
+extern void * dupInterceptor;
+extern void * readInterceptor;
+extern void * closeInterceptor;
+
+char paths[1024][4096];
+int refCount[1024] = { 0 };
+
+#define O_PATH 010000000
+
+void copy_string(char *dest, const char *src, int n) {
+    for (int i = 0; i < n && src[i] != '\\0'; i++) {
+        dest[i] = src[i];
+    }
+}
+
+void zero_string(char *str, int n) {
+    for (int i = 0; i < n; i++) {
+        str[i] = '\\0';
+    }
+}
+
+int str_contains(const char* str, const char* target) {
+    int i, j;
+    for (i = 0; str[i] != '\\0'; i++) {
+        for (j = 0; target[j] != '\\0'; j++) {
+            if (str[i + j] != target[j]) break;
+        }
+        if (target[j] == '\\0') return 1;
+    }
+    return 0;
+}
+
+int open(const char * path, int flags, ...) {
+    int (*original_open)(const char *, int, ...) = openInterceptor;
+    int fd = original_open(path, flags);
+    if (fd != -1 && !(flags & O_PATH)) {
+        refCount[fd]++;
+        copy_string(paths[fd], path, 4096 - 1);
+    }
+    return fd;
+}
+
+int dup(int oldfd) {
+    int (*original_dup)(int) = dupInterceptor;
+    int newfd = original_dup(oldfd);
+    if (newfd != -1 && refCount[oldfd] > 0) {
+        refCount[newfd]++;
+        copy_string(paths[newfd], paths[oldfd], 4096 - 1);
+    }
+    return newfd;
+}
+
+int read(int fd, void * buf, int count) {
+    int (*original_read)(int, void *, int) = readInterceptor;
+    if (str_contains(paths[fd], "/data/local/tmp")) {
+        printf("Read operation on file in /data/local/tmp: %s\\n", paths[fd]);
+    }
+    return original_read(fd, buf, count);
+}
+
+int close(int fd) {
+    int (*original_close)(int) = closeInterceptor;
+    int result = original_close(fd);
+    if (refCount[fd] > 0) {
+        refCount[fd]--;
+        if (refCount[fd] == 0)
+            zero_string(paths[fd], 4096 - 1);
+    }
+    return result;
+}
+`,
+    {
+      openInterceptor: Module.getExportByName("libc.so", "open"),
+      dupInterceptor: Module.getExportByName("libc.so", "dup"),
+      readInterceptor: Module.getExportByName("libc.so", "read"),
+      closeInterceptor: Module.getExportByName("libc.so", "close"),
+    }
+  );
+  Interceptor.replace(Module.getExportByName("libc.so", "open"), cmodule.open);
+  Interceptor.replace(Module.getExportByName("libc.so", "dup"), cmodule.dup);
+
+  Interceptor.replace(Module.getExportByName("libc.so", "read"), cmodule.read);
+
+  Interceptor.replace(
+    Module.getExportByName("libc.so", "close"),
+    cmodule.close
+  );
+}
+export { patchOpenRead };
+function patchProcSelfMaps() {
+  const openPtr = Module.findExportByName("libc.so", "open");
+  const readPtr = Module.findExportByName("libc.so", "read");
+  const closePtr = Module.findExportByName("libc.so", "close");
+  const open = new NativeFunction(openPtr, "int", ["pointer", "int"]);
+  const read = new NativeFunction(readPtr, "ssize_t", [
+    "int",
+    "pointer",
+    "size_t",
+  ]);
+  const close = new NativeFunction(closePtr, "int", ["int"]);
+  Interceptor.attach(openPtr, {
+    onEnter(args) {
+      this.path = args[0].readCString();
+      this.flag = args[1].toInt32();
+    },
+    onLeave(retval) {
+      let _this$path;
+      if (
+        null != (_this$path = this.path) &&
+        _this$path.includes("/proc/self/maps")
+      ) {
+        const originalFd = retval.toInt32();
+        const bufferSize = 4096;
+        const buffer = Memory.alloc(bufferSize);
+        let bytesRead = 0;
+        let totalBytesRead = 0;
+        let fileContent = "";
+        info(color.yellowBright("Read original content"));
+        do {
+          bytesRead = read(originalFd, buffer, bufferSize);
+          totalBytesRead += bytesRead;
+
+          if (bytesRead > 0) {
+            fileContent += buffer.readCString(bytesRead);
+          }
+        } while (bytesRead > 0);
+        close(originalFd);
+
+        info(
+          color.yellowBright(
+            "Delete all lines that consist of a path containing /data/local/tmp"
+          )
+        );
+
+        const lines = fileContent.split("\n");
+
+        const filteredLines = lines.filter(
+          (line) => !line.includes("/data/local/tmp")
+        );
+
+        const modifiedContent = filteredLines.join("\n");
+        info(color.yellowBright("Write modified content into temp file"));
+        const tempFile = new File(
+          "/data/data/com.nianticlabs.pokemongo/files/tempProcSelfMaps",
+          "w"
+        );
+        tempFile.write(modifiedContent);
+        tempFile.flush();
+        tempFile.close();
+
+        info(
+          color.yellowBright("Open the temp file to get new file descriptor")
+        );
+
+        const tempFilePath = Memory.allocUtf8String(
+          "/data/data/com.nianticlabs.pokemongo/files/tempProcSelfMaps"
+        );
+
+        const tempFd = open(tempFilePath, this.flag);
+
+        info(
+          color.yellowBright(
+            "Replace the original file descriptor with the descriptor for this temp file"
+          )
+        );
+
+        retval.replace(tempFd);
+      }
+    },
+  });
+}
+export { patchProcSelfMaps };
+function patchProcSelfMaps2() {
+  const openPtr = new NativeFunction(
+    Module.findExportByName("libc.so", "open"),
+    "int",
+    ["pointer", "int"]
+  );
+
+  const openInterceptor = new CModule(
+    `
+#include <string.h>
+#include <stdio.h>
+
+extern int (*original_open)(const char *, int);
+
+int open(const char *pathname, int flags) {
+  if (strstr(pathname, "/proc/self/maps")) {
+      char *tempFilePath = "/data/data/com.nianticlabs.pokemongo/files/tempProcSelfMaps";
+      int tempFd = original_open(tempFilePath, flags);
+      return tempFd;
+  } else {
+      return original_open(pathname, flags);
+  }
+}
+`,
+    { original_open: openPtr }
+  );
+
+  Interceptor.replace(
+    Module.findExportByName("libc.so", "open"),
+    openInterceptor.open
+  );
+}
+export { patchProcSelfMaps2 };
+function traceNewfstatatFilepaths() {
+  const newfstatatPtr = Module.findExportByName(null, "fstatat");
+
+  const newfstatat = new NativeFunction(newfstatatPtr, "int", [
+    "int",
+    "pointer",
+    "pointer",
+    "int",
+  ]);
+
+  const seenPaths = new Set();
+  Interceptor.attach(newfstatatPtr, {
+    onEnter(args) {
+      this.dirfd = args[0].toInt32();
+      this.pathname = args[1].readCString();
+    },
+    onLeave() {
+      if (
+        !["base.apk", "UnityCache", "bundle"].some((item) =>
+          this.pathname.includes(item)
+        ) &&
+        !seenPaths.has(this.pathname)
+      ) {
+        if (!seenPaths.has(this.pathname)) {
+          console.log(
+            `[TRACE] Attempted to get information for: ${this.pathname}`
+          );
+
+          seenPaths.add(this.pathname);
+        }
+      }
+    },
+  });
+}
+const seenPaths = new Set();
+function traceFAccessAtFilepaths() {
+  const faccessatPtr = Module.findExportByName(null, "faccessat");
+
+  const faccessat = new NativeFunction(faccessatPtr, "int", [
+    "int",
+    "pointer",
+    "int",
+  ]);
+
+  const seenPaths = new Set();
+  Interceptor.attach(faccessatPtr, {
+    onEnter(args) {
+      this.dirfd = args[0].toInt32();
+      this.pathname = args[1].readCString();
+    },
+    onLeave() {
+      if (
+        !["base.apk", "UnityCache", "bundle"].some((item) =>
+          this.pathname.includes(item)
+        ) &&
+        !seenPaths.has(this.pathname)
+      ) {
+        if (!seenPaths.has(this.pathname)) {
+          console.log(
+            `[TRACE] Attempted to get information for: ${this.pathname}`
+          );
+
+          seenPaths.add(this.pathname);
+        }
+      }
+    },
+  });
+}
+function anti_isDebuggerConnected() {
+  Java.perform(() => {
+    const Debug = Java.use("android.os.Debug");
+    Debug.isDebuggerConnected.implementation = function () {
+      console.log(
+        `isDebuggerConnected was ${this.isDebuggerConnected()}, will bypass !`
+      );
+
+      return false;
+    };
+  });
+}
+function anti_developer_mod() {
+  Java.perform(() => {
+    const SSecure = Java.use("android.provider.Settings$Secure");
+    SSecure.getStringForUser.overload(
+      "android.content.ContentResolver",
+      "java.lang.String",
+      "int"
+    ).implementation = function (contentResolver, name, flag) {
+      return name.includes("development_settings_enabled")
+        ? (console.log(name),
+          this.getStringForUser.call(this, contentResolver, "fuckyou", flag))
+        : this.getStringForUser(contentResolver, name, flag);
+    };
+  });
+}
+info(color.cyanBright.bold("Applying early patches..."));
+
+ditto_1.default.onInitialize(() => {
+  info(color.cyanBright("Applying Dittolib patches..."));
+  const TelemetryUploader = ditto_1.default.use(
+    "Niantic.Platform.Analytics.Telemetry.TelemetryUploader"
+  );
+  TelemetryUploader.ConditionalFlush.replace(() => {});
+
+  TelemetryUploader.get_IsEnabled.replace(() => false);
+
+  ditto_1.default
+    .use(
+      "Niantic.Platform.Analytics.Telemetry::Niantic.Platform.Analytics.Telemetry.PreLoginTelemetrySettingsDownloader"
+    )
+    .DownloadSettings.replace(() => {});
+
+  const ClientTelemetrySettingsDownloader = ditto_1.default.use(
+    "Niantic.Platform.Analytics.Telemetry.ClientTelemetrySettingsDownloader"
+  );
+  ClientTelemetrySettingsDownloader.DownloadSettings.replace(() => {});
+  ClientTelemetrySettingsDownloader.Resume.replace(() => {});
+
+  ClientTelemetrySettingsDownloader.get_CanDownloadSettings.replace(
+    () => false
+  );
+
+  ClientTelemetrySettingsDownloader.get_IsEnabled.replace(() => false);
+
+  const ClientTelemetryBatchProto = ditto_1.default.use(
+    "Niantic.Platform.Analytics.Telemetry::Niantic.Platform.Analytics.Telemetry.ClientTelemetryBatchProto"
+  );
+  ClientTelemetryBatchProto.CalculateSize.attach({
+    onEnter() {
+      this.events_.array = [];
+      this.events_.count = 0;
+    },
+  });
+});

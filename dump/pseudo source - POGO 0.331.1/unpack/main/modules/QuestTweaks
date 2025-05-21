@@ -1,0 +1,591 @@
+import PogoUtils_1 from "../utils/PogoUtils";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const I18n_1 = __importDefault(require("../utils/I18n"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const ObjectInstance_1 = __importDefault(require("../utils/ObjectInstance"));
+const UnityUtils_1 = __importDefault(require("../utils/UnityUtils"));
+const AutoQuests_1 = __importDefault(require("./AutoQuests"));
+const QUEST_REWARD_EXPERIENCE = 1;
+const QUEST_REWARD_ITEM = 2;
+const QUEST_REWARD_STARDUST = 3;
+const QUEST_REWARD_CANDY = 4;
+const QUEST_REWARD_POKEMON_ENCOUNTER = 7;
+const QUEST_REWARD_XL_CANDY = 9;
+const QUEST_REWARD_MEGA_RESOURCE = 12;
+const QUEST_REWARD_INCIDENT = 13;
+class QuestTweaks extends ModuleBase_1.default {
+  constructor() {
+    super();
+    this.questInfo = "";
+    this.timelimitedQuestProto = undefined;
+    this.majorReward = undefined;
+    this.QuestsProtoInstance = null;
+    this.PokemonAssetManagerInstance = null;
+    this.GameMasterDataInstance = null;
+    this._UnityEngineObject = undefined;
+    this._Image = undefined;
+    this._Text = undefined;
+    this._PokemonDisplayProto = undefined;
+    this.PokemonInventoryGuiService = null;
+    this.QuestService = null;
+    this.bag = null;
+    this.is_custom_menu = false;
+    this.disabled = false;
+    this.cbMap = new Map();
+  }
+  init() {
+    super.init();
+    this.QuestsProtoInstance = new ObjectInstance_1.default("QuestsProto");
+
+    this.PokemonAssetManagerInstance = new ObjectInstance_1.default(
+      "Niantic.Holoholo.AssetBundles.PokemonAssetManager"
+    );
+
+    this.GameMasterDataInstance = new ObjectInstance_1.default(
+      "GameMasterData"
+    );
+
+    this._UnityEngineObject = ditto_1.default.use("UnityEngine.Object");
+    this._Image = ditto_1.default.use("UnityEngine.UI.Image");
+    this._Text = ditto_1.default.use("UnityEngine.UI.Text");
+    this._Graphic = ditto_1.default.use("UnityEngine.UI.Graphic");
+    this._PokemonDisplayProto = ditto_1.default.use("PokemonDisplayProto");
+    const self = this;
+    const FortSearchOutProto = ditto_1.default.use("FortSearchOutProto");
+    FortSearchOutProto[
+      "pb::Niantic.Protobuf.IBufferMessage.InternalMergeFrom"
+    ].attach({
+      onLeave() {
+        if (!this.challengeQuest_) {
+          return;
+        }
+        const qTitle = this.challengeQuest_.questDisplay_.title_;
+        const qGoal = this.challengeQuest_.quest_.goal_.target_;
+
+        const qTitleI18n = I18n_1.default.unity
+          .getText(qTitle)
+          .replace("{0}", qGoal);
+
+        const questRewardProto =
+          this.challengeQuest_.quest_.questRewards_.array[0];
+        const reward =
+          this.challengeQuest_.quest_.questRewards_.array[0].reward_;
+        switch (questRewardProto.type_) {
+          case QUEST_REWARD_EXPERIENCE: {
+            const reward_m_value = reward.m_value;
+            const qXPLabelI18n = I18n_1.default.unity.getText("general_xp");
+            self.questInfo = `${qTitleI18n}\n${qXPLabelI18n} x${reward_m_value}`;
+            break;
+          }
+          case QUEST_REWARD_ITEM: {
+            const { item_, amount_ } = reward;
+
+            const qItemName = I18n_1.default.unity.getItemNameFromId(item_);
+            self.questInfo = `${qTitleI18n}\n${qItemName} x${amount_}`;
+            break;
+          }
+          case QUEST_REWARD_STARDUST: {
+            const reward_m_value = reward.m_value;
+
+            const qStardustLabelI18n = I18n_1.default.unity.getText(
+              "pokemon_info_stardust_label"
+            );
+
+            self.questInfo = `${qTitleI18n}\n${qStardustLabelI18n} x${reward_m_value}`;
+            break;
+          }
+          case QUEST_REWARD_CANDY: {
+            const qCandyLabel = I18n_1.default.unity
+              .getText("pokemon_info_candy_label")
+              .replace(
+                "{0}",
+                I18n_1.default.unity.getPokemonNameFromId(reward.pokemonId_)
+              );
+            self.questInfo = `${qTitleI18n}\n${qCandyLabel} x${reward.amount_}`;
+            break;
+          }
+          case QUEST_REWARD_POKEMON_ENCOUNTER: {
+            const isShiny =
+              !!reward.pokemonDisplay_ && reward.pokemonDisplay_.shiny_;
+
+            const reward_isHiddenDitto = reward.isHiddenDitto_;
+
+            const pkmnName = I18n_1.default.unity.getPokemonNameFromId(
+              reward.type_.m_value
+            );
+
+            self.questInfo = `${qTitleI18n}\n${
+              isShiny ? "Shiny " : ""
+            }${pkmnName}${reward_isHiddenDitto ? " (Ditto)" : ""}`;
+            break;
+          }
+          case QUEST_REWARD_XL_CANDY: {
+            const qXLCandyLabel = I18n_1.default.unity
+              .getText("pokemon_info_xl_candy_label")
+              .replace(
+                "{0}",
+                I18n_1.default.unity.getPokemonNameFromId(reward.pokemonId_)
+              );
+            self.questInfo = `${qTitleI18n}\n${qXLCandyLabel} x${reward.amount_}`;
+            break;
+          }
+          case QUEST_REWARD_MEGA_RESOURCE: {
+            const qEnergyName = I18n_1.default.unity.getPokemonNameFromId(
+              reward.pokemonId_
+            );
+
+            const qMegaEnergyLabelI18n = I18n_1.default.unity
+              .getText("pokemon_info_mega_resource_label")
+              .replace("{0}", qEnergyName);
+
+            const reward_amount = reward.amount_;
+            self.questInfo = `${qTitleI18n}\n${qMegaEnergyLabelI18n} x${reward_amount}`;
+            break;
+          }
+          default: {
+            self.questInfo = qTitleI18n;
+          }
+        }
+      },
+    });
+    const QuestRewardItem = ditto_1.default.use(
+      "Niantic.Holoholo.Quests.QuestRewardItem"
+    );
+    QuestRewardItem.DoUpdate.replace(function (data) {
+      let pokemonID;
+      if (data.Reward.type_ == QUEST_REWARD_POKEMON_ENCOUNTER) {
+        const aImage = this.hiddenPokemonRoot.GetComponent(self._Image.typeof);
+        if (!aImage) {
+          warn(color.yellow("[QT] no images found"));
+        } else {
+          const questReward = data.Reward.reward_;
+          pokemonID = questReward.isHiddenDitto_
+            ? 132
+            : questReward.type_.m_value;
+          const pokemonDisplay = questReward.isHiddenDitto_
+            ? questReward.dittoDisplay_
+            : questReward.pokemonDisplay_;
+          self.requestSpriteAndReplace(pokemonID, pokemonDisplay, aImage);
+        }
+      }
+      this.DoUpdate(data);
+
+      if (pokemonID) {
+        const text = this.hiddenPokemonRoot.GetComponentInChildren(
+          self._Text.typeof
+        );
+        if (text) {
+          const holoText = text.$className == "I18nText" ? text.base : text;
+          holoText.textKey = "";
+
+          holoText.base.set_text(
+            I18n_1.default.unity.getPokemonNameFromId(pokemonID)
+          );
+        }
+      }
+    });
+    const QuestListDanglingStoryEncounterView = ditto_1.default.use(
+      "Niantic.Holoholo.Quests.QuestListDanglingStoryEncounterView"
+    );
+
+    QuestListDanglingStoryEncounterView.ResetData.attach({
+      onLeave() {
+        const questPokemonEncounter = this.questPokemonEncounterProto;
+
+        const pokemonID = questPokemonEncounter.isHiddenDitto_
+          ? 132
+          : questPokemonEncounter.pokemon_.pokemonId_;
+
+        const pokemonDisplay = questPokemonEncounter.isHiddenDitto_
+          ? questPokemonEncounter.ditto_.pokemonDisplay_
+          : questPokemonEncounter.pokemon_.pokemonDisplay_;
+
+        const rewardGO =
+          this.base.base.base.base.base.base.base.get_gameObject();
+
+        const rewardImage = rewardGO.GetComponentsInChildren(
+          self._Image.typeof,
+          true
+        );
+
+        const image = rewardImage[2].base;
+        const label = rewardGO.GetComponentInChildren(self._Text.typeof, true);
+        const holoText = label.$className == "I18nText" ? label.base : label;
+        holoText.textKey = "";
+
+        holoText.base.set_text(
+          I18n_1.default.unity.getPokemonNameFromId(pokemonID)
+        );
+
+        self.requestSpriteAndReplace(pokemonID, pokemonDisplay, image);
+      },
+    });
+
+    ditto_1.default
+      .use("Niantic.Holoholo.Quests.QuestService")
+      .GetDanglingEncounterOfType.attach({
+        onLeave(retval) {
+          if (retval) {
+            self.timelimitedQuestProto = retval;
+          }
+        },
+      });
+
+    const DanglingResearchRewardWidget = ditto_1.default.use(
+      "Niantic.Holoholo.UI.TodayView.DanglingResearchRewardWidget"
+    );
+    DanglingResearchRewardWidget.DoUpdate.attach({
+      onLeave() {
+        if (!self.timelimitedQuestProto) {
+          return;
+        }
+        const self_timelimitedQuestProto = self.timelimitedQuestProto;
+
+        const pokemonID = self_timelimitedQuestProto.isHiddenDitto_
+          ? 132
+          : self_timelimitedQuestProto.pokemon_.pokemonId_;
+
+        const pokemonDisplay = self_timelimitedQuestProto.isHiddenDitto_
+          ? self_timelimitedQuestProto.ditto_.pokemonDisplay_
+          : self_timelimitedQuestProto.pokemon_.pokemonDisplay_;
+
+        self.requestSpriteAndReplace(
+          pokemonID,
+          pokemonDisplay,
+          this.encounterImage
+        );
+      },
+    });
+    const ToastService = ditto_1.default.use(
+      "Niantic.Holoholo.UI.ToastService"
+    );
+    ToastService.ShowQuestUpdate.attach({
+      onEnter(args) {
+        if (
+          args[0] == "quests_new_challenge_received" &&
+          self.questInfo != ""
+        ) {
+          args[0] = self.questInfo;
+          self.questInfo = "";
+        }
+      },
+    });
+    const ToastGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.UI.ToastGuiController"
+    );
+    ToastGuiController.SetMessage.attach({
+      onEnter() {
+        if (this.toastZone == 1) {
+          this.message.set_verticalOverflow(1);
+          this.message.set_alignment(3);
+        }
+      },
+    });
+    const LootToMajorRewardConverter = ditto_1.default.use(
+      "Niantic.Holoholo.UI.LootToMajorRewardConverter"
+    );
+    LootToMajorRewardConverter.QuestRewardToMajorRewards.attach({
+      onEnter(args) {
+        if (args[0].type_ == QUEST_REWARD_POKEMON_ENCOUNTER) {
+          self.majorReward = args[0].reward_;
+        }
+      },
+    });
+    const GenericQuestModalGui = ditto_1.default.use(
+      "Niantic.Holoholo.Quests.GenericQuestModalGui"
+    );
+    GenericQuestModalGui.Initialize.overload(
+      "string",
+      "string",
+      "UnityEngine.AddressableAssets.AssetReferenceSprite",
+      "System.Nullable<UnityEngine.Color>",
+      "bool",
+      "bool",
+      "UserResponsePromise<ModalEvent>",
+      "IModalButton[]"
+    ).attach({
+      onEnter() {
+        this.buttonDelaySeconds = 0;
+        this.fadeInTimeSeconds = 0;
+      },
+      onLeave() {
+        if (self.majorReward) {
+          let _self$majorReward$typ;
+          const pokemonId =
+            null == (_self$majorReward$typ = self.majorReward.type_) ||
+            _self$majorReward$typ.m_value;
+          if (typeof pokemonId != "number") {
+            return void warn(`[QT] pokemonId (${pokemonId}) is not a number`);
+          }
+          const targetID = self.majorReward.isHiddenDitto_ ? 132 : pokemonId;
+
+          const pokemonDisplay = self.majorReward.isHiddenDitto_
+            ? self.majorReward.dittoDisplay_
+            : self.majorReward.pokemonDisplay_;
+
+          self.requestSpriteAndReplace(
+            targetID,
+            pokemonDisplay,
+            this.messageIcon
+          );
+
+          self.majorReward = undefined;
+        }
+      },
+    });
+    const QuestsProto = ditto_1.default.use("QuestsProto");
+    QuestsProto["pb::Niantic.Protobuf.IBufferMessage.InternalMergeFrom"].attach(
+      {
+        onLeave() {
+          self.QuestsProtoInstance.value = this;
+        },
+      }
+    );
+    const QuestListDanglingChallengeEncounterView = ditto_1.default.use(
+      "Niantic.Holoholo.Quests.QuestListDanglingChallengeEncounterView"
+    );
+
+    QuestListDanglingChallengeEncounterView.ResetData.attach({
+      onLeave() {
+        let _self$QuestsProtoInst;
+        let _self$QuestsProtoInst2;
+        let _self$QuestsProtoInst3;
+        let _self$QuestsProtoInst4;
+        const enhancedScrollerCellView = this.base.base.base;
+        const rtr =
+          enhancedScrollerCellView.base.base.base.base.get_transform();
+        if (
+          null != (_self$QuestsProtoInst = self.QuestsProtoInstance.value) &&
+          null !=
+            (_self$QuestsProtoInst2 =
+              _self$QuestsProtoInst.questPokemonEncounter_) &&
+          _self$QuestsProtoInst2.count &&
+          1 <
+            (null ==
+              (_self$QuestsProtoInst3 = self.QuestsProtoInstance.value) ||
+              null ==
+                (_self$QuestsProtoInst4 =
+                  _self$QuestsProtoInst3.questPokemonEncounter_) ||
+              _self$QuestsProtoInst4.count)
+        ) {
+          let _rtr$base$Find;
+
+          const label = rtr.base.base.GetComponentInChildren(
+            self._Text.typeof,
+            true
+          );
+
+          const holoText = label.$className == "I18nText" ? label.base : label;
+          holoText.textKey = "";
+
+          holoText.base.set_text(
+            `${I18n_1.default.unity.getText(
+              "pokemonstorageupgrade.1_title"
+            )} (${self.QuestsProtoInstance.value.questPokemonEncounter_.count})`
+          );
+
+          const rewardImageRTR =
+            null == (_rtr$base$Find = rtr.base.Find("Active")) ||
+            _rtr$base$Find.base.Find("QuestRewardItem");
+          if (rewardImageRTR) {
+            const go = rewardImageRTR.base.base.get_gameObject();
+            go.set_active(false);
+          }
+        } else {
+          let _rtr$base$Find2;
+          const rewardImageRTR =
+            null == (_rtr$base$Find2 = rtr.base.Find("Active")) ||
+            _rtr$base$Find2.base.Find("QuestRewardItem");
+          if (rewardImageRTR) {
+            const go = rewardImageRTR.base.base.get_gameObject();
+            go.set_active(true);
+            const image = go.GetComponentInChildren(self._Image.typeof);
+            if (image) {
+              const questPokemonEncounter = this.questPokemonEncounterProto;
+
+              const pokemonID = questPokemonEncounter.isHiddenDitto_
+                ? 132
+                : questPokemonEncounter.pokemon_.pokemonId_;
+
+              const pokemonDisplay = questPokemonEncounter.isHiddenDitto_
+                ? questPokemonEncounter.ditto_.pokemonDisplay_
+                : questPokemonEncounter.pokemon_.pokemonDisplay_;
+
+              self.requestSpriteAndReplace(pokemonID, pokemonDisplay, image);
+            }
+          }
+        }
+      },
+    });
+
+    QuestListDanglingChallengeEncounterView.OnClick.replace(function () {
+      self.QuestService = this.questService;
+
+      if (
+        self.disabled ||
+        !self.QuestsProtoInstance.value.questPokemonEncounter_ ||
+        !self.QuestsProtoInstance.value.questPokemonEncounter_ ||
+        2 >
+          (null == (_self$QuestsProtoInst5 = self.QuestsProtoInstance.value) ||
+            null ==
+              (_self$QuestsProtoInst6 =
+                _self$QuestsProtoInst5.questPokemonEncounter_) ||
+            _self$QuestsProtoInst6.count)
+      ) {
+        return this.OnClick();
+      }
+
+      if (!self.PokemonInventoryGuiService) {
+        const choose = ditto_1.default.choose(
+          "Niantic.Holoholo.UI.Pokemon.PokemonInventoryGuiService"
+        );
+        for (let i = 0; i < choose.length; i++) {
+          if (choose[i].globalSettings) {
+            self.PokemonInventoryGuiService = choose[i];
+            break;
+          }
+        }
+      }
+      const data = ditto_1.default
+        .use("Niantic.Holoholo.UI.Pokemon.PokemonInventoryGuiService/Data")
+        .$new();
+      data.BannerTitle = `LIMBO (${self.QuestsProtoInstance.value.questPokemonEncounter_.count})`;
+      data.Flags = 0;
+      self.is_custom_menu = true;
+
+      self.PokemonInventoryGuiService.ShowPokemonInventoryToApplyItem(data, 0);
+    });
+
+    const PokemonInventoryGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.UI.Pokemon.PokemonInventoryGuiController"
+    );
+
+    PokemonInventoryGuiController.Initialize.attach({
+      onEnter() {
+        self.bag = this;
+      },
+      onLeave() {
+        if (self.is_custom_menu) {
+          const banner = this.bannerGui;
+          banner.titleText.set_text(
+            `LIMBO (${self.QuestsProtoInstance.value.questPokemonEncounter_.count})`
+          );
+          const searchGO = this.searchWidget.base.base.base.get_gameObject();
+          searchGO.set_active(false);
+        }
+      },
+    });
+
+    PokemonInventoryGuiController.HandleDismissComplete.attach({
+      onLeave() {
+        self.is_custom_menu = false;
+      },
+    });
+
+    const PokemonInventoryListLine = ditto_1.default.use(
+      "Niantic.Holoholo.UI.PokemonInventoryListLine"
+    );
+    PokemonInventoryListLine.Sort.replace(function (...args) {
+      if (self.is_custom_menu) {
+        const pokemon = [];
+        const rf = self.QuestsProtoInstance.value.questPokemonEncounter_;
+        for (let i = 0; i < rf.count; i++) {
+          pokemon.push(rf.array[i].pokemon_);
+        }
+        args[0]._items = pokemon;
+        args[0]._size = rf.count;
+      }
+      const retval = this.Sort(...args);
+      return retval;
+    });
+    const PokemonInventoryCellView = ditto_1.default.use(
+      "Niantic.Holoholo.UI.PokemonInventoryCellView"
+    );
+
+    PokemonInventoryCellView.Initialize.attach({
+      onLeave() {
+        if (self.is_custom_menu && this.pokemonId != 0) {
+          const button = self._UnityEngineObject.Instantiate(
+            self.bag.editTagButton,
+            this.clickArea,
+            false
+          );
+          button.m_OnClick = null;
+          const rf = self.QuestsProtoInstance.value.questPokemonEncounter_;
+          for (let i = 0; i < rf.count; i++) {
+            if (
+              rf.array[i].pokemon_.id_.toString() == this.pokemonId.toString()
+            ) {
+              PogoUtils_1.PogoUtils.buttons.addButton({
+                id: `limbo${i}`,
+                instance: button.$instance.toString(),
+                callback: () => {
+                  self.bag.ClickDismiss();
+                  self.is_custom_menu = false;
+                  const widget = ditto_1.default
+                    .use(
+                      "Niantic.Holoholo.Quests.QuestListDanglingStoryEncounterView"
+                    )
+                    .$new();
+                  widget.questService = self.QuestService;
+                  widget.Initialize(rf.array[i]);
+                  widget.OnClick();
+                },
+              });
+              break;
+            }
+          }
+        }
+      },
+    });
+
+    new AutoQuests_1.default().init();
+  }
+  requestSpriteAndReplace(pokemonID, pokemonDisplay, image) {
+    if (!pokemonDisplay) {
+      pokemonDisplay = this._PokemonDisplayProto.$new();
+      pokemonDisplay.form_ =
+        this.GameMasterDataInstance.value.GetDefaultForm(pokemonID);
+    }
+
+    const cbID = image.$instance.toString() + Date.now().toString();
+
+    const spriteReq = this.PokemonAssetManagerInstance.value.RequestSprite(
+      pokemonID,
+      pokemonDisplay,
+      false
+    );
+
+    const action = UnityUtils_1.default.makeAction(
+      `qt_sprite_req_${cbID}`,
+      "System.Action",
+      () => {
+        const sprite = spriteReq.assetPromise.completedValue;
+
+        if (sprite.$className == "Sprite") {
+          if (image.$className == "AddressablesImage") {
+            return void image.base.set_overrideSprite(sprite);
+          }
+
+          if (image.$className == "Image") {
+            return void image.set_overrideSprite(sprite);
+          }
+
+          return void warn(
+            color.yellow(`[QT] "${image.$className}" is not an Image`)
+          );
+        }
+
+        return void warn(
+          color.yellow(`[QT] Promise returend "${sprite.$className}", huh`)
+        );
+      },
+      true
+    );
+
+    spriteReq.assetPromise.Then(action);
+  }
+}
+export default QuestTweaks;

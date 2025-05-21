@@ -1,0 +1,59 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const I18n_1 = __importDefault(require("../utils/I18n"));
+class SkipEncounterIntro extends ModuleBase_1.default {
+  constructor() {
+    super();
+    this.rocketEncounter = false;
+  }
+  init() {
+    super.init();
+    const self = this;
+    if (!(this.isEnabled("BlockNonShiny") || this.isEnabled("SemiAutocatch"))) {
+      const EncounterState = ditto_1.default.use(
+        "Niantic.Holoholo.Encounter.EncounterState"
+      );
+      EncounterState.BeginEncounterApproach.replace(function () {
+        self.rocketEncounter = this._IsIncidentEncounter_k__BackingField;
+        this.ApproachComplete();
+      });
+    }
+    const EncounterInteractionState = ditto_1.default.use(
+      "Niantic.Holoholo.Encounter.EncounterInteractionState"
+    );
+    EncounterInteractionState.InitializeState.attach({
+      onLeave() {
+        const camera = this.parkCameraController;
+
+        if (self.rocketEncounter) {
+          camera.tweenDurationSeconds = 0.2;
+          camera.introDurationSeconds = 0.2;
+        } else {
+          camera.tweenDurationSeconds = 0;
+          camera.introDurationSeconds = 0;
+        }
+      },
+    });
+    const EncounterGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.Encounter.EncounterGuiController"
+    );
+    EncounterGuiController.ShowIntro.replace(function () {
+      if (this.encounterPokemon.$className != "ArPlusEncounterPokemon") {
+        const mapPokemon = this.encounterPokemon.get_MapPokemon();
+
+        if (mapPokemon.$className.includes("WildMapPokemon")) {
+          if (mapPokemon.encounterProto.pokemon_.pokemon_.pokemonId_ == 132) {
+            this.Toast(I18n_1.default.getText("toast.skipIntro.ditto"), 1);
+          }
+        }
+      }
+    });
+    const EncounterPokemon = ditto_1.default.use(
+      "Niantic.Holoholo.Encounter.EncounterPokemon"
+    );
+    EncounterPokemon.get_Invulnerable.replace(() => false);
+  }
+}
+export default SkipEncounterIntro;

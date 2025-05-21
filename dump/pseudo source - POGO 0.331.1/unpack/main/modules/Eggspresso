@@ -1,0 +1,325 @@
+import {
+  RewardItemWithSprite,
+  RewardItemStardust,
+} from "../../main/utils/Toast";
+import PogoUtils_1 from "../utils/PogoUtils";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../../main/utils/ModuleBase"));
+
+const ObjectInstance_1 = __importDefault(
+  require("../../main/utils/ObjectInstance")
+);
+
+const I18n_1 = __importDefault(require("../../main/utils/I18n"));
+const PokemonData_1 = __importDefault(require("../utils/PokemonData"));
+class Eggspresso extends ModuleBase_1.default {
+  constructor() {
+    super();
+    this.PokemonBagImplInstance = undefined;
+    this.EggIncubatorsProtoInstance = undefined;
+    this.PokemonAssetManagerInstance = undefined;
+    this.unlimitedIncubator = null;
+    this.noEggs = false;
+    this.logger = undefined;
+  }
+  init() {
+    super.init();
+    this.logger = createLogger("Eggspresso");
+
+    this.PokemonBagImplInstance = new ObjectInstance_1.default(
+      "PokemonBagImpl"
+    );
+
+    this.EggIncubatorsProtoInstance = new ObjectInstance_1.default(
+      "EggIncubatorsProto"
+    );
+
+    this.PokemonAssetManagerInstance = new ObjectInstance_1.default(
+      "Niantic.Holoholo.AssetBundles.PokemonAssetManager"
+    );
+
+    const self = this;
+    const EggIncubatorsProto = ditto_1.default.use("EggIncubatorsProto");
+    EggIncubatorsProto[
+      "pb::Niantic.Protobuf.IBufferMessage.InternalMergeFrom"
+    ].attach({
+      onLeave() {
+        self.unlimitedIncubator = null;
+        self.EggIncubatorsProtoInstance.value = this;
+
+        return self.PokemonBagImplInstance.getCurrentValue()
+          ? void self.incubate()
+          : (self.logger.info(
+              color.yellow("Waiting till Pokemon bag is updated...")
+            ),
+            ditto_1.default
+              .use("PokemonBagImpl")
+              .GetCurrentlyMegaEvolvedPokemon.probe((instance) => {
+                self.logger.info(
+                  color.gray(
+                    "Got Pokemon bag update from GetCurrentlyMegaEvolvedPokemon"
+                  )
+                );
+
+                self.PokemonBagImplInstance.value = instance;
+                self.incubate();
+              }),
+            void ditto_1.default
+              .use("PokemonBagImpl")
+              .HandleOnInventoryUpdate.probe((instance) => {
+                self.logger.info(
+                  color.gray(
+                    "Got Pokemon bag update from HandleOnInventoryUpdate"
+                  )
+                );
+
+                self.PokemonBagImplInstance.value = instance;
+                self.incubate();
+              }));
+      },
+    });
+    const PgpActivityMonitorDisplayClass = ditto_1.default.use(
+      "Niantic.Holoholo.Pgp.PgpActivityMonitor/<>c__DisplayClass22_0"
+    );
+    PgpActivityMonitorDisplayClass["<HandleActionLog>b__1"].attach({
+      onEnter(args) {
+        this.actionLogEntry = args[0];
+      },
+      onLeave(retval) {
+        if (self.noEggs && retval && this.actionLogEntry.sfida_) {
+          const fortSearchLogEntry = this.actionLogEntry.get_FortSearch();
+          if (
+            !fortSearchLogEntry ||
+            !fortSearchLogEntry.pokemonEggs_ ||
+            !fortSearchLogEntry.pokemonEggs_ ||
+            fortSearchLogEntry.pokemonEggs_.count < 1
+          ) {
+            return;
+          }
+          self.incubate(
+            fortSearchLogEntry.pokemonEggs_.array[0].id_.toString()
+          );
+        }
+      },
+    });
+    const FortSearchOutProto = ditto_1.default.use("FortSearchOutProto");
+    FortSearchOutProto[
+      "pb::Niantic.Protobuf.IBufferMessage.InternalMergeFrom"
+    ].attach({
+      onLeave() {
+        if (self.noEggs && this.eggPokemon_) {
+          self.incubate(this.eggPokemon_.id_.toString());
+        }
+      },
+    });
+    const OpenGiftOutProto = ditto_1.default.use("OpenGiftOutProto");
+
+    OpenGiftOutProto[
+      "pb::Niantic.Protobuf.IBufferMessage.InternalMergeFrom"
+    ].attach({
+      onLeave() {
+        if (self.noEggs && this.result_ == 1) {
+          let _this$items_;
+          if (this.eggPokemon_) {
+            return void self.incubate(this.eggPokemon_.id_.toString());
+          }
+          const loot =
+            null == (_this$items_ = this.items_) || _this$items_.lootItem_;
+          if (loot) {
+            for (let i = 0; i < loot.count; i++) {
+              const item = loot.array[i];
+              if (item.typeCase_ == 7) {
+                self.incubate(item.type_.id_.toString());
+                break;
+              }
+            }
+          }
+        }
+      },
+    });
+
+    ditto_1.default
+      .use("Niantic.Holoholo.Map.MapExploreState")
+      .StartEggsHatchState.replace(() => {
+        self.logger.info(
+          color.blue.bold("Skipping egg hatch animations and routines")
+        );
+      });
+
+    const GetHatchedEggsOutProto = ditto_1.default.use(
+      "GetHatchedEggsOutProto"
+    );
+    GetHatchedEggsOutProto[
+      "pb::Niantic.Protobuf.IBufferMessage.InternalMergeFrom"
+    ].attach({
+      onLeave() {
+        let _this$pokemonId_;
+        if (
+          0 <
+          (null == (_this$pokemonId_ = this.pokemonId_) ||
+            _this$pokemonId_.count)
+        ) {
+          let stardust = 0;
+          const hatched = this.hatchedPokemon_;
+          for (let i = 0; i < hatched.count; i++) {
+            const pokemonProto = hatched.array[i];
+            if (!pokemonProto) {
+              continue;
+            }
+            stardust += this.stardustAwarded_.array[i];
+            const pokemonProto_pokemonDisplay = pokemonProto.pokemonDisplay_;
+
+            const assetRequest =
+              self.PokemonAssetManagerInstance.value.RequestSprite(
+                pokemonProto.pokemonId_,
+                pokemonProto_pokemonDisplay,
+                false
+              );
+
+            PogoUtils_1.PogoUtils.waitUntilComplete(assetRequest).then(
+              (sprite) => {
+                RewardItemWithSprite(
+                  sprite,
+                  assetRequest,
+                  I18n_1.default.unity.getPokemonNameFromId(
+                    pokemonProto.pokemonId_
+                  ),
+                  1
+                );
+              }
+            );
+          }
+          RewardItemStardust(stardust);
+        }
+      },
+    });
+  }
+  incubate(eggId = "") {
+    this.updateUnlimitedIncubator();
+
+    if (!this.unlimitedIncubator || this.unlimitedIncubator.pokemonId_ != 0) {
+      return;
+    }
+
+    if (!eggId) {
+      const egg = this.findEgg();
+
+      if (egg) {
+        eggId = egg.id_.toString();
+      }
+    }
+    if (!eggId) {
+      return void (this.noEggs = true);
+    }
+    this.noEggs = false;
+    const m = Memory.alloc(8);
+    m.writeU64(uint64(eggId));
+    const id = m.readS64();
+
+    const incubatorService = PogoUtils_1.PogoUtils.DiContainer.Instantiate(
+      ditto_1.default.use("IncubatorService").typeof
+    );
+
+    this.logger.info(color.cyan("Created Incubator Service."));
+    const req = incubatorService.PutEggInIncubator(id, this.unlimitedIncubator);
+    this.logger.info(
+      color.yellow(
+        `Trying to incubate egg with id ${eggId} (${id}), request promise: ${req}`
+      )
+    );
+  }
+  findEgg() {
+    const pokemonMap = this.PokemonBagImplInstance.value.allPokemon;
+    const keys = pokemonMap.get_Keys();
+    const enumerator = keys.GetEnumerator();
+
+    while (enumerator.MoveNext()) {
+      const key =
+        enumerator[
+          "System.Collections.Generic.IEnumerator<TKey>.get_Current"
+        ]();
+
+      const pokemonProto = pokemonMap.get_Item(key);
+      if (pokemonProto.isEgg_ && !pokemonProto.eggIncubatorId_) {
+        this.noEggs = false;
+
+        this.logger.info(
+          color.cyan(
+            `Found egg > ID: ${pokemonProto.id_
+              .toString()
+              .padEnd(22)} - Target: ${pokemonProto.eggKmWalkedTarget_
+              .toString()
+              .padStart(2)}km`
+          )
+        );
+
+        return pokemonProto;
+      }
+    }
+
+    this.logger.info(color.yellow("No eggs available..."));
+    return null;
+  }
+  updateUnlimitedIncubator() {
+    if (!this.unlimitedIncubator) {
+      const incubators = this.EggIncubatorsProtoInstance.value.eggIncubator_;
+      for (let i = 0; i < incubators.count; i++) {
+        if (incubators.array[i].item_ == 901) {
+          this.logger.info(
+            color.yellow(
+              `Found Unlimited Incubator, pokemon ID: ${incubators.array[i].pokemonId_}`
+            )
+          );
+
+          this.unlimitedIncubator = incubators.array[i];
+          break;
+        }
+      }
+    }
+  }
+  sendTelemetryHatched(pokemonProto) {
+    const pokemonData = new PokemonData_1.default(pokemonProto);
+    const originDetail = pokemonProto == null || pokemonProto.originDetail_;
+
+    const eggCreateDetail = originDetail == null || originDetail.originDetail_;
+
+    const dataTelemetry = {
+      type: "log",
+      date: new Date().toISOString(),
+      source: "Hatched",
+      reference_id: pokemonProto.id_,
+      message: `Hatched ${pokemonData.name}${
+        pokemonData.shiny ? " Shiny" : ""
+      } IV${pokemonData.iv}%${
+        pokemonData.form ? ` Form:${pokemonData.form}` : ""
+      }${pokemonData.costume ? ` Costume:${pokemonData.costume}` : ""} Gender:${
+        pokemonData.gender
+      }`,
+      data: {
+        PokemonId: pokemonData.pokemonId,
+        Name: pokemonData.name,
+        CP: pokemonData.cp,
+        Level: pokemonData.level,
+        Form: pokemonData.form,
+        Costume: pokemonData.costume,
+        Gender: pokemonData.gender,
+        IvAtk: pokemonData.attack,
+        IvDef: pokemonData.defense,
+        IvSta: pokemonData.hp,
+        EggType: pokemonProto.eggType_,
+        EggKm: pokemonProto.eggKmWalkedTarget_,
+        Size: pokemonData.size,
+        Height: pokemonData.height,
+        Weight: pokemonData.weight,
+        Shiny: pokemonData.shiny ? "True" : "False",
+        ReceivedTimeMs:
+          eggCreateDetail == null || eggCreateDetail.receivedTimeMs_,
+      },
+    };
+
+    ditto_1.default.Telemetry._sendTelemetry(dataTelemetry);
+  }
+}
+export default Eggspresso;

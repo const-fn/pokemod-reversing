@@ -1,0 +1,368 @@
+export const __esModule = true;
+const _core = _interopRequireDefault(require("./core"));
+const _model = _interopRequireDefault(require("./model"));
+const _obfmap = _interopRequireDefault(require("./obfmap"));
+const _klass = _interopRequireDefault(require("./klass"));
+function _interopRequireDefault(obj) {
+  return obj && obj.__esModule ? obj : { default: obj };
+} // TODO: memoize properly by memoizing all methods from Core
+
+//       that call il2cpp functions
+let SystemToString;
+
+let UnityEngineGetInstanceID;
+let UnityEngineToString;
+class ClassFactory {
+  static use(namespace, classname) {
+    const klass = _klass.default.getClass(namespace, classname);
+    const wrapper = new Wrapper(null);
+    wrapper.$klass = klass;
+    wrapper.$model = new _model.default(klass);
+    return wrapper;
+  }
+  static wrap(obj) {
+    const klass = _core.default.getObjectClass(obj);
+    const wrapper = new Wrapper(obj);
+    wrapper.$klass = klass;
+    wrapper.$model = new _model.default(klass);
+    return wrapper;
+  }
+  static cast(obj, klass) {
+    const wrapper = new Wrapper(obj);
+    wrapper.$klass = klass;
+    wrapper.$model = new _model.default(klass);
+    return wrapper;
+  }
+}
+export default ClassFactory;
+class Wrapper {
+  constructor(instance) {
+    this.$instance = instance;
+    this.$ref = null;
+
+    return new Proxy(this, {
+      has(target, property) {
+        return !!(property in target) || target.$has(property);
+      },
+      get(target, property) {
+        if (
+          typeof property != "string" ||
+          property.startsWith("$") ||
+          property.startsWith("$") ||
+          property === "namespace"
+        ) {
+          return target[property];
+        }
+        const obfuscatedSymbol = _obfmap.default.getObfuscated(property);
+
+        if (obfuscatedSymbol != property && target.$has(obfuscatedSymbol)) {
+          property = obfuscatedSymbol;
+        }
+
+        if (target.$hasField(property)) {
+          const field = target.$find(property);
+          return field.getValue(target.$instance);
+        }
+
+        const unwrap = target.$find(property);
+        if (unwrap) {
+          return unwrap;
+        }
+        if (property === "then" || property === "catch") {
+          // if the object is a promise, the javascript vm checks if the resolved object
+          // is thenable by checking if it's got a then/catch method, which would fail
+          return target[property];
+        }
+        if (property === "length") {
+          // if the object is an array with dimension 0 that was wrapped or created by
+          // using Ditto.wrap or Ditto.cast, we need to return 0 as length to avoid
+          // isCompatible to fail trying to access the property
+          return 0;
+        }
+        if (target[property] === undefined) {
+          throw new Error(
+            `Class ${_obfmap.default.getPrettyString(
+              target.$className
+            )} has no method or field named ${_obfmap.default.getPrettyString(
+              property
+            )}. ${
+              Object.keys(_obfmap.default.lex_to_obf).length
+                ? ""
+                : "Did you forget to load the obfuscation map?"
+            }`
+          );
+        }
+        return target[property];
+      },
+      set(target, property, value) {
+        if (
+          typeof property != "string" ||
+          property.startsWith("$") ||
+          property.startsWith("$") ||
+          property === "namespace"
+        ) {
+          target[property] = value;
+          return true;
+        }
+        const obfuscatedSymbol = _obfmap.default.getObfuscated(property);
+
+        if (obfuscatedSymbol != property && target.$has(obfuscatedSymbol)) {
+          property = obfuscatedSymbol;
+        }
+
+        if (target.$hasField(property)) {
+          const field = target.$find(property);
+          return field.setValue(target.$instance, value);
+        }
+
+        target[property] = value;
+        return true;
+      },
+      ownKeys(target) {
+        return target.$list();
+      },
+      getOwnPropertyDescriptor(target, property) {
+        return Object.prototype.hasOwnProperty.call(target, property)
+          ? Object.getOwnPropertyDescriptor(target, property)
+          : { writable: false, configurable: true, enumerable: true };
+      },
+    });
+  }
+  get $new() {
+    const wrapped_instance = ClassFactory.cast(
+      _core.default.createObject(this.$klass),
+      this.$klass
+    );
+
+    if (!wrapped_instance) {
+      error(`creation of object failed for ${this.$fullName}`);
+    }
+
+    const destructor = _core.default.makeDestructor(wrapped_instance.$instance);
+    wrapped_instance.$ref = Script.bindWeak(wrapped_instance, destructor);
+    return wrapped_instance.$ctor.bind(wrapped_instance);
+  }
+  get $ctor() {
+    const ctor = this.$find(".ctor");
+    if (ctor) {
+      return ctor;
+    }
+    const fake_ctor = function () {
+      return this;
+    };
+    return fake_ctor;
+  }
+  get base() {
+    if (this.$klass && this.$fullName != "System.Object") {
+      const parent = _core.default.getClassParent(this.$klass);
+      if (!parent.isNull()) {
+        return ClassFactory.cast(this.$instance, parent);
+      }
+    }
+  }
+  toString() {
+    const instance = this.$instance;
+    if (_core.default.tracingMode) {
+      // I know, mate...
+      SystemToString =
+        SystemToString ||
+        _core.default.getMethod(
+          _klass.default.getClass("System", "Object"),
+          "ToString",
+          0
+        );
+
+      UnityEngineToString =
+        UnityEngineToString ||
+        _core.default.getMethod(
+          _klass.default.getClass("UnityEngine", "Object"),
+          "ToString",
+          0
+        );
+
+      UnityEngineGetInstanceID =
+        UnityEngineGetInstanceID ||
+        _core.default.getMethod(
+          _klass.default.getClass("UnityEngine", "Object"),
+          "GetInstanceID",
+          0
+        );
+
+      if (this.$has("ToString")) {
+        try {
+          const methodInfo = this.ToString.overloads[0].methodInfo;
+          return _obfmap.default.getObfuscated(
+            _core.default.readString(
+              _core.default.methodInvoke(methodInfo, instance, [])
+            )
+          );
+        } catch (e) {}
+      }
+
+      if (instance) {
+        // TODO: crashes on some objects
+        // try {
+        //     const unityObjectGetInstanceID = Core.methodInvoke(UnityEngineGetInstanceID, instance, []);
+        //     if (unityObjectGetInstanceID !== 0) {
+        //         const unityObjectToString = Core.readString(Core.methodInvoke(UnityEngineToString, instance, []));
+        //         if (unityObjectToString && unityObjectToString !== "null") {
+        //             return ObfuscationMap.getObfuscated(unityObjectToString);
+        //         }
+        //     }
+        // } catch (e) {}
+        try {
+          const objectToString = _core.default.readString(
+            _core.default.methodInvoke(SystemToString, instance, [])
+          );
+          if (objectToString) {
+            return _obfmap.default.getObfuscated(objectToString);
+          }
+        } catch (e) {}
+      }
+      try {
+        return _obfmap.default.getObfuscated(
+          _core.default.readString(
+            _core.default.methodInvoke(
+              SystemToString,
+              this.typeof.$instance,
+              []
+            )
+          )
+        );
+      } catch (e) {}
+    }
+    if (instance === null) {
+      let prefix = "class";
+
+      if (this.$isEnum()) {
+        prefix = "enum";
+      }
+
+      if (this.$isStruct()) {
+        prefix = "struct";
+      }
+
+      if (this.$isInterface()) {
+        prefix = "interface";
+      }
+
+      return `<${prefix}: ${_obfmap.default.getUnObfuscated(this.$fullName)}>`;
+    }
+    return this.$isStruct()
+      ? `<struct: ${_obfmap.default.getUnObfuscated(this.$fullName)}@${instance
+          .toString()
+          .replace("0x", "")}>`
+      : `<instance: ${_obfmap.default.getUnObfuscated(
+          this.$fullName
+        )}@${instance.toString().replace("0x", "")}>`;
+  }
+  get typeof() {
+    return ClassFactory.wrap(_core.default.getSystemType(this.$klass));
+  }
+  $list() {
+    const model = this.$model;
+    return Array.from(new Set(model.list()));
+  }
+  $has(member) {
+    const model = this.$model; // checks the obfuscated name as well because it might exist
+    return !!(
+      model.has(member) || model.has(_obfmap.default.getObfuscated(member))
+    );
+  }
+  $hasField(member) {
+    const model = this.$model; // checks the obfuscated name as well because it might exist
+    return !!(
+      model &&
+      (model.hasField(member) ||
+        model.hasField(_obfmap.default.getObfuscated(member)))
+    );
+  }
+  $find(member) {
+    const model = this.$model;
+    if (model.has(member)) {
+      return model.find(member);
+    }
+  }
+  get $methods() {
+    const model = this.$model;
+    return model.methods;
+  }
+  get $fields() {
+    const model = this.$model;
+    return model.fields;
+  }
+  get $className() {
+    return _core.default.getClassname(this.$klass); // DEPRECATED: getObjectClassname returns the original
+    // object's classname if it's a casted object
+    // const instance = this.$instance;
+    // if (!instance) {
+    //     return Core.getClassname(this.$klass);
+    // }
+    // return Core.getObjectClassname(instance);
+  }
+  get namespace() {
+    return _core.default.getClassNamespace(this.$klass);
+  }
+  get $assemblyName() {
+    return _core.default.getClassAssemblyName(this.$klass);
+  }
+  get $imageName() {
+    return _core.default.getClassImageName(this.$klass);
+  }
+  get $fullName() {
+    let dTypeName = "";
+    let dType = _core.default.getClassDeclaringType(this.$klass);
+
+    while (true && !dType.isNull()) {
+      dTypeName = `${_core.default.getClassname(dType)}.` + dTypeName;
+      dType = _core.default.getClassDeclaringType(dType);
+    }
+
+    return this.namespace
+      ? `${this.namespace}.${dTypeName}${this.$className}`
+      : `${dTypeName}${this.$className}`;
+  }
+  get $interfaces() {
+    const interfaces = _core.default.getAllClassInterfaces(this.$klass);
+    const ifaces = [];
+
+    interfaces.forEach((i) => ifaces.push(ClassFactory.cast(null, i)));
+
+    return ifaces;
+  }
+  get $nested() {
+    const nested = _core.default.getNestedKlasses(this.$klass);
+    const nests = [];
+
+    nested.forEach((i) => nests.push(ClassFactory.cast(null, i)));
+
+    return nests;
+  }
+  $dispose() {
+    const ref = this.$ref;
+
+    if (ref !== null) {
+      this.$ref = null;
+      Script.unbindWeak(ref);
+    }
+
+    if (this.$instance) {
+      this.$instance = undefined;
+    }
+  }
+  $isStruct() {
+    return _core.default.isClassStruct(this.$klass);
+  }
+  $isEnum() {
+    return _core.default.isClassEnum(this.$klass);
+  }
+  $isAbstract() {
+    return _core.default.isClassAbstract(this.$klass);
+  }
+  $isInterface() {
+    return _core.default.isClassInterface(this.$klass);
+  }
+  $isGeneric() {
+    return _core.default.isClassGeneric(this.$klass);
+  }
+}

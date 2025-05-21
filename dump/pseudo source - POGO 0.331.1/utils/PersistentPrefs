@@ -1,0 +1,134 @@
+(function (Buffer) {
+  (() => {
+    const __importDefault = (mod) =>
+      mod && mod.__esModule ? mod : { default: mod };
+    const ditto_1 = __importDefault(require("@pkmd/ditto"));
+    class Prefs {
+      static init_() {
+        this.unityFile_ = ditto_1.default.use("System.IO.File");
+        const application = ditto_1.default.use("UnityEngine.Application");
+        this.path_ = application.get_persistentDataPath();
+        info(color.gray(`Set Prefs path to: ${this.path_}`));
+      }
+      static load_(prefix) {
+        const path = `${this.path_}/${prefix}.param`;
+        if (!this.unityFile_.Exists(path)) {
+          return false;
+        }
+        info(color.gray(`[PREFS] Loading "${prefix}" file...`));
+        const text = this.unityFile_.ReadAllText(path);
+        if (!text) {
+          return false;
+        }
+        const split = text.split(":");
+        if (split.length != 2) {
+          return false;
+        }
+        const [b64, hash] = split;
+        if (b64.length < 2 || hash.length < 2) {
+          return false;
+        }
+        if (hash != this.makeHash_(b64)) {
+          return false;
+        }
+        let b64Decoded;
+        try {
+          b64Decoded = Buffer.from(b64, "base64").toString();
+        } catch (e) {
+          info(
+            color.red(
+              `[PREFS] Error while decoding "${prefix}": ${e.message}\n${e.stack}`
+            )
+          );
+
+          return false;
+        }
+        const decrypted = this.xor_(b64Decoded);
+        try {
+          this.cached_[prefix] = JSON.parse(decrypted);
+          info(color.green(`[PREFS] Loaded "${prefix}" file`));
+        } catch (e) {
+          info(
+            color.red(
+              `[PREFS] Error while parsing "${prefix}": ${e.message}\n${e.stack}`
+            )
+          );
+
+          return false;
+        }
+        return true;
+      }
+      static save_(prefix) {
+        const path = `${this.path_}/${prefix}.param`;
+        const data = JSON.stringify(this.cached_[prefix]);
+        const encrypted = Buffer.from(this.xor_(data)).toString("base64");
+        const hashed = `${encrypted}:${this.makeHash_(encrypted)}\n`;
+        const f = new File(path, "w");
+        f.write(hashed);
+        f.flush();
+        f.close();
+      }
+      static makeHash_(str) {
+        let h = 9;
+        for (let i = 0; i < str.length; i++) {
+          h = Math.imul(h ^ str.charCodeAt(i), 387420489);
+        }
+        return h ^ (h >>> 9);
+      }
+      static xor_(data) {
+        let enlargedKey = this.key_;
+
+        while (enlargedKey.length < data.length) {
+          enlargedKey += enlargedKey;
+        }
+
+        let xored = "";
+        for (let i = 0; i < data.length; i++) {
+          const xorValue = data.charCodeAt(i) ^ enlargedKey.charCodeAt(i);
+          xored += String.fromCharCode(xorValue);
+        }
+        return xored;
+      }
+      static has(param, prefix = "PlayerPrefs") {
+        return (
+          !!(this.cached_[prefix] || this.load_(prefix)) &&
+          this.cached_[prefix][param] !== undefined
+        );
+      }
+      static get(param, defaultValue = undefined, prefix = "PlayerPrefs") {
+        return this.cached_[prefix] || this.load_(prefix)
+          ? this.cached_[prefix][param] === undefined
+            ? defaultValue
+            : this.cached_[prefix][param]
+          : defaultValue;
+      }
+      static set(param, value, prefix = "PlayerPrefs") {
+        if (!this.cached_[prefix] && !this.load_(prefix)) {
+          if (!this.load_(prefix)) {
+            this.cached_[prefix] = {};
+          }
+        }
+
+        this.cached_[prefix][param] = value;
+        this.save_(prefix);
+      }
+      static del(param, prefix = "PlayerPrefs") {
+        if (
+          (this.cached_[prefix] || this.load_(prefix)) &&
+          this.cached_[prefix][param] !== undefined
+        ) {
+          delete this.cached_[prefix][param];
+          this.save_(prefix);
+        }
+      }
+    }
+    exports.default = Prefs;
+    Prefs.key_ = "hi_sylvie";
+    Prefs.path_ = "/sdcard/Android/data/com.nianticlabs.pokemongo/files";
+    Prefs.cached_ = {};
+
+    ditto_1.default.onInitialize(() => {
+      Prefs.init_();
+    });
+  }).call(this);
+}).call(this, require("buffer").Buffer);

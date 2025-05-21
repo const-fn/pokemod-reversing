@@ -1,0 +1,92 @@
+export const __esModule = true;
+export { cyrb53 };
+export { timeConversion };
+function timeConversion(duration, pad = true) {
+  const portions = [];
+  const msInHour = 3600000;
+  const hours = Math.trunc(duration / msInHour);
+
+  if (hours > 0) {
+    portions.push(`${hours}h`);
+    duration -= hours * msInHour;
+  }
+
+  const minutes = Math.trunc(duration / 60000);
+
+  if (minutes > 0) {
+    portions.push(`${minutes}m`);
+    duration -= 60000 * minutes;
+  }
+
+  const seconds = Math.trunc(duration / 1000);
+
+  if (seconds > 10) {
+    portions.push(`${seconds}s`);
+    duration -= 1000 * seconds;
+  }
+
+  const millis = Math.trunc(duration);
+
+  if (duration > 0) {
+    portions.push(`${millis}ms`);
+  } else {
+    portions.push(`${duration.toFixed(2)}ms`);
+  }
+
+  return pad ? portions.join(" ").padStart(20, " ") : portions.join(" ");
+}
+/**
+ * @function
+ * @name extractNamespaceAndClassname
+ * @description Parses a full class name and returns the class name and namespace
+ * @param {string} fullClassname The full class name
+ * @returns {object} The namespace and class name
+ */ const extractNamespaceAndClassname = (fullClassname) => {
+  //TODO: Split also domains/images (or make different funcs) and change Klass accordingly
+  let namespace;
+
+  let classname = fullClassname;
+
+  if (fullClassname.includes(".")) {
+    namespace = fullClassname.substring(0, fullClassname.lastIndexOf("."));
+
+    classname = fullClassname.substring(fullClassname.lastIndexOf(".") + 1);
+  }
+
+  return { namespace, classname };
+};
+export { extractNamespaceAndClassname };
+const i = (c) => `${"--".padStart(c, "-")}> `;
+export { i };
+const o = (n) =>
+  `${n}`
+    .replace(/,,+/, "")
+    .replace(/\>,[^\]]/g, "\n,")
+    .replace(/,instance: /g, " ".repeat(28)) // .replace(/\[/, "\n")
+    .replace(/[>,]\]$/, "]")
+    .replace(/<instance: /, "")
+    .replace(/\>$/, "");
+export { o };
+const v = (s, a) => a.some((e) => s.includes(e));
+export { v };
+function cyrb53(str, seed = 0) {
+  let h1 = 3735928559 ^ seed;
+  let h2 = 1103547991 ^ seed;
+  for (let ch, i = 0; i < str.length; i++) {
+    ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+
+  h1 =
+    Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^
+    Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+
+  h2 =
+    Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^
+    Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+}
+
+export const colorArray = ["blue", "cyan", "green", "yellow", "magenta", "red"];

@@ -1,0 +1,159 @@
+import PogoUtils_1 from "../utils/PogoUtils";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const ObjectInstance_1 = __importDefault(require("../utils/ObjectInstance"));
+const UserData_1 = __importDefault(require("../utils/UserData"));
+class InstantLoading extends ModuleBase_1.default {
+  constructor() {
+    super();
+  }
+  init() {
+    super.init();
+
+    this.nativeLocationProviderInstance = new ObjectInstance_1.default(
+      "Niantic.Holoholo.Map.NativeLocationProvider"
+    );
+
+    this.combatChallengeRpcServiceInstance = new ObjectInstance_1.default(
+      "CombatChallengeRpcService"
+    );
+
+    const self = this;
+    const coordinates = [];
+    let prevPlayerLatitude;
+    let prevPlayerLongitude;
+    let lastCheckTimestamp = Date.now();
+    let shouldForceGMO = false;
+    let finishedChallenge = true;
+    const check_bot_running = () =>
+      PogoUtils_1.PogoUtils.toggles.isToggled("PokeFarmer") ||
+      PogoUtils_1.PogoUtils.toggles.isToggled("GruntFarmer");
+    ditto_1.default
+      .use("Niantic.Holoholo.Map.MapContentHandler")
+      .UpdateCells.attach({
+        onEnter() {
+          if (shouldForceGMO) {
+            this.gmoQueue.Clear();
+          }
+        },
+        onLeave() {
+          const currentTime = Date.now();
+          const updateIntervalPassed =
+            1000 /* 1e3 */ <= currentTime - lastCheckTimestamp;
+          if (
+            updateIntervalPassed &&
+            !check_bot_running() &&
+            UserData_1.default.tier != "staff"
+          ) {
+            if (shouldForceGMO) {
+              info(color.magenta.bold("Forcing GMO"));
+              this.set_ForceImmediateGetObjects(true);
+              shouldForceGMO = false;
+            } else if (finishedChallenge) {
+              const { Longitude, Latitude } =
+                self.nativeLocationProviderInstance.value.get_Location();
+
+              const distance = self.calculateDistance(
+                prevPlayerLatitude,
+                prevPlayerLongitude,
+                Latitude,
+                Longitude
+              );
+
+              for (
+                coordinates.push({
+                  lat: Latitude,
+                  lng: Longitude,
+                  time: currentTime - lastCheckTimestamp,
+                });
+                coordinates.reduce((acc, val) => acc + val.time, 0) >
+                10000 /* 1e4 */;
+
+              ) {
+                coordinates.shift();
+              }
+              const [lastCoordinate] = coordinates;
+
+              const totalDistance = lastCoordinate
+                ? self.calculateDistance(
+                    lastCoordinate.lat,
+                    lastCoordinate.lng,
+                    Latitude,
+                    Longitude
+                  )
+                : 0;
+
+              const totalTime = coordinates.reduce(
+                (acc, val) => acc + val.time,
+                0
+              );
+
+              prevPlayerLatitude = Latitude;
+              prevPlayerLongitude = Longitude;
+
+              if (distance >= 100) {
+                coordinates.length = 0;
+
+                info(
+                  color.bold(
+                    `Clearing up speed measurements because player moved more than 100m (${
+                      totalDistance / (totalTime / 1000) /* 1e3 */
+                    } m/s)`
+                  )
+                );
+              }
+
+              if (finishedChallenge && (distance >= 100 || distance === null)) {
+                finishedChallenge = false;
+
+                const challengeId = `C_${Math.floor(9999 * Math.random())
+                  .toString()
+                  .padStart(4, "0")}_${Math.floor(
+                  999999999999999 * Math.random()
+                )
+                  .toString()
+                  .padStart(15, "0")}`;
+
+                const challenge =
+                  self.combatChallengeRpcServiceInstance.value.CreateCombatChallenge(
+                    challengeId
+                  );
+
+                PogoUtils_1.PogoUtils.waitUntilComplete(challenge)
+                  .then(() => {
+                    shouldForceGMO = true;
+                  })
+                  .finally(() => {
+                    finishedChallenge = true;
+                  });
+              }
+
+              lastCheckTimestamp = Date.now();
+            }
+          }
+        },
+      });
+  }
+  calculateDistance(lat1, lon1, lat2, lon2) {
+    if ([lat1, lon1, lat2, lon2].some((x) => x === undefined)) {
+      return null;
+    }
+    const latRad1 = (lat1 * Math.PI) / 180;
+    const latRad2 = (lat2 * Math.PI) / 180;
+    const deltaLat = ((lat2 - lat1) * Math.PI) / 180;
+    const deltaLon = ((lon2 - lon1) * Math.PI) / 180;
+
+    const a =
+      Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+      Math.cos(latRad1) *
+        Math.cos(latRad2) *
+        Math.sin(deltaLon / 2) *
+        Math.sin(deltaLon / 2);
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return 6371000 * c;
+  }
+}
+export default InstantLoading;

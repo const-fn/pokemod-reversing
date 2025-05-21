@@ -1,0 +1,220 @@
+(function (setImmediate) {
+  (() => {
+    exports.default = undefined;
+    const _core = _interopRequireDefault(require("../core"));
+    const _ditto = _interopRequireDefault(require("../ditto"));
+    const _factory = _interopRequireDefault(require("../factory"));
+    const _api = _interopRequireDefault(require("./api"));
+    function _interopRequireDefault(obj) {
+      return obj && obj.__esModule ? obj : { default: obj };
+    }
+    let idOffset;
+    class Il2CppThread {
+      static getCurrentThread() {
+        if (!_core.default.globalDomain) {
+          throw new Error(
+            "Can't attach to a thread without a domain. Either initialize Dittolib or specify a thread."
+          );
+        }
+        const current = _api.default.thread_current();
+        return current.isNull() || current;
+      }
+      static getIdOffset() {
+        let _this$getThreadObject;
+        let _this$getThreadObject2;
+        if (idOffset) {
+          return idOffset;
+        }
+
+        const nativeThreadIdPtr = ptr(
+          null ==
+            (_this$getThreadObject = this.getThreadObject(
+              this.getCurrentThread()
+            )) ||
+            null ==
+              (_this$getThreadObject2 =
+                _this$getThreadObject.internal_thread) ||
+            _this$getThreadObject2.thread_id.toString()
+        );
+
+        const currentThreadId = Process.getCurrentThreadId();
+        for (let i = 0; i < 1024; i++) {
+          const nativeThreadId = nativeThreadIdPtr.add(i).readS32();
+          if (nativeThreadId == currentThreadId) {
+            idOffset = i;
+            return i;
+          }
+        }
+      }
+      static getThreadId(thread = undefined) {
+        let threadPtr;
+        if (!thread) {
+          return NULL;
+        }
+        unsafe(`Getting thread ID for ${thread}`);
+
+        if ("System.Threading.Thread" == (thread == null || thread.$fullName)) {
+          let _thread$internal_thre;
+          return ptr(
+            null == (_thread$internal_thre = thread.internal_thread) ||
+              _thread$internal_thre.thread_id
+          )
+            .add(this.getIdOffset())
+            .readS32();
+        }
+
+        let _this$getThreadObject3;
+        return ptr(
+          null ==
+            (_this$getThreadObject3 =
+              this.getThreadObject(threadPtr).internal_thread) ||
+            _this$getThreadObject3.thread_id
+        )
+          .add(this.getIdOffset())
+          .readS32();
+      }
+      static detachThread(thread) {
+        unsafe(`Detaching from thread ${thread}`);
+        _api.default.thread_detach(thread);
+      }
+      static isMainThread() {
+        return _api.default.is_vm_thread();
+      }
+      static attachThread(domain = undefined) {
+        if (!domain && !_core.default.globalDomain) {
+          throw new Error(
+            "Can't attach to a thread without a domain. Either initialize Dittolib or specify a thread."
+          );
+        }
+        unsafe(`Attaching to a thread on domain ${_core.default.globalDomain}`);
+        const threadPtr = _api.default.thread_attach(
+          _core.default.globalDomain
+        );
+        return threadPtr;
+      }
+      static getThreadObject(thread) {
+        return _factory.default.cast(
+          thread,
+          _ditto.default.use("System.Threading.Thread").$klass
+        );
+      }
+      /** Determines whether the thread is the garbage collector finalizer one. */ static isFinalizerThread(
+        thread
+      ) {
+        return !_api.default.is_vm_thread(thread);
+      }
+      /** Schedules a callback on the Il2Cpp initializer thread. */ static scheduleOnInitializerThread(
+        callback,
+        thread
+      ) {
+        let _thread;
+
+        if (!thread) {
+          this.getCurrentThread();
+        }
+
+        const threadHandle =
+          "System.Threading.Thread" ==
+          (null == (_thread = thread) || _thread.$fullName)
+            ? ptr(thread.internal_thread.handle.toString())
+            : thread;
+
+        const listener = Interceptor.attach(threadHandle, () => {
+          listener.detach();
+          callback();
+        });
+
+        return listener;
+      }
+      /** Gets the attached threads objects */ static attachedThreads() {
+        const array = [];
+        const arraySizePtr = Memory.alloc(Process.pointerSize);
+
+        const startPointer =
+          _api.default.thread_get_all_attached_threads(arraySizePtr);
+
+        const size = arraySizePtr.readInt();
+        for (let i = 0; i < size; i++) {
+          array.push(
+            this.getThreadObject(
+              startPointer.add(i * Process.pointerSize).readPointer()
+            )
+          );
+        }
+        return array;
+      }
+      /**Experimental support do not use in prod */ static schedule(cb, delay) {
+        if (!_core.default.dittoDebug) {
+          throw new Error("Experimental support, use ditto debug");
+        }
+        const CurrentThread = this.getThreadObject(this.getCurrentThread());
+        const ExecutionContext = CurrentThread.GetMutableExecutionContext();
+        let syncContext = ExecutionContext.get_SynchronizationContext();
+        if (!syncContext) {
+          for (let i = 0; i < 16; i++) {
+            try {
+              let _casted$$className;
+              let CurrentThread_internal_thread = CurrentThread.internal_thread;
+              CurrentThread_internal_thread =
+                CurrentThread_internal_thread.static_data.$instance
+                  .add(Process.pointerSize * i)
+                  .readPointer(); // this probably should use the _pointer (type void*) but dittolib dosen't support that
+              const obj = { $instance: CurrentThread_internal_thread };
+
+              const casted = _ditto.default.cast(
+                obj,
+                "System.Threading.SynchronizationContext"
+              );
+
+              if (
+                casted != null &&
+                null != (_casted$$className = casted.$className) &&
+                _casted$$className.includes != null &&
+                _casted$$className.includes("SynchronizationContext")
+              ) {
+                syncContext = casted;
+                break;
+              }
+            } catch (e) {
+              console.log(e);
+            }
+          }
+          const Runtime = _factory.default.use("Mono", "Runtime");
+
+          const GetDisplayName = _core.default.getMethod(
+            Runtime.$klass,
+            "GetDisplayName",
+            0
+          );
+
+          const SendOrPostCallback = _ditto.default
+            .use("System.Threading.SendOrPostCallback")
+            .$new(
+              null,
+              _ditto.default.use("IntPtr").$new(GetDisplayName.toInt32())
+            );
+
+          return new Promise((resolve, reject) => {
+            try {
+              const listener = Interceptor.attach(
+                GetDisplayName.readPointer(),
+                () => {
+                  listener.detach();
+                  const result = cb();
+                  setImmediate(() => resolve(result));
+                }
+              );
+              setTimeout(
+                () => syncContext.Post(SendOrPostCallback, null),
+                delay
+              );
+            } catch (error) {
+              reject(error);
+            }
+          });
+        }
+      }
+    }
+    exports.default = Il2CppThread;
+  }).call(this);
+}).call(this, require("timers").setImmediate);

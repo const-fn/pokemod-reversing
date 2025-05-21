@@ -1,0 +1,72 @@
+export const __esModule = true;
+export { yetAnotherRequestLibrary };
+function yetAnotherRequestLibrary(targetUrl, body, headers) {
+  return new Promise((resolve) =>
+    targetUrl
+      ? void (
+          // using this here because we need some very early
+          // request library in case instrumentation is attached
+          // before us or before ditto is initialized
+          Java.performNow(() => {
+            const HttpURLConnection = Java.use("java.net.HttpURLConnection");
+            const URL = Java.use("java.net.URL");
+            const BufferedReader = Java.use("java.io.BufferedReader");
+            const BufferedWriter = Java.use("java.io.BufferedWriter");
+            const BufferedOutputStream = Java.use(
+              "java.io.BufferedOutputStream"
+            );
+            const OutputStreamWriter = Java.use("java.io.OutputStreamWriter");
+            const StringBuilder = Java.use("java.lang.StringBuilder");
+            const InputStreamReader = Java.use("java.io.InputStreamReader");
+            const url = URL.$new(Java.use("java.lang.String").$new(targetUrl));
+            let conn = url.openConnection();
+            conn = Java.cast(conn, HttpURLConnection);
+            conn.setRequestMethod("POST");
+            for (const [key, value] of Object.entries(headers)) {
+              conn.setRequestProperty(key, value);
+            }
+            conn.setConnectTimeout(5000 /* 5e3 */);
+            conn.setReadTimeout(5000 /* 5e3 */);
+            conn.setDoInput(true);
+            conn.setDoOutput(true);
+            conn.setChunkedStreamingMode(0);
+            const os = conn.getOutputStream();
+            const out = BufferedOutputStream.$new(os);
+
+            const osw = OutputStreamWriter.$new(
+              out,
+              Java.use("java.lang.String").$new("UTF-8")
+            );
+
+            const writer = BufferedWriter.$new(osw);
+            writer.$super.write(Java.use("java.lang.String").$new(body));
+            writer.flush();
+            writer.close();
+            os.close();
+            conn.connect();
+            const code = conn.getResponseCode();
+            let ret = null;
+            if (code == 200) {
+              const inputStream = conn.getInputStream();
+
+              const buffer = BufferedReader.$new(
+                InputStreamReader.$new(inputStream)
+              );
+
+              const sb = StringBuilder.$new();
+              for (let line = null; null != (line = buffer.readLine()); ) {
+                sb.append(line);
+              }
+              let data = sb.toString();
+              data = JSON.parse(data).data;
+              ret = data;
+            } else {
+              ret = `error: ${code}`;
+            }
+            conn.disconnect();
+            resolve(ret);
+          })
+        )
+      : void resolve("error: URL is empty")
+  );
+}

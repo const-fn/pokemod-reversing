@@ -1,0 +1,278 @@
+import _telemetry from "../telemetry";
+import { cyrb53 } from "./utils_dir_file";
+export const __esModule = true;
+export { getCallingFile };
+export { getStack };
+const _factory = _interopRequireDefault(require("../factory"));
+const _klass = _interopRequireDefault(require("../klass"));
+function _interopRequireDefault(obj) {
+  return obj && obj.__esModule ? obj : { default: obj };
+} // import { Telemetry, cyrb53 } from "./utils/telemetry";
+class ExceptionHandler {
+  previousStack = {};
+  logException(name, message, type, stack) {
+    const newStack = [];
+
+    newStack.push(
+      color.red.bold(`[${type}] ` + (name ? `${name}: ` : "") + `${message}`)
+    );
+
+    newStack.push(
+      color.red(
+        `\tBase: ${Module.getBaseAddress(
+          "libil2cpp.so"
+        )}. ThreadId: ${Process.getCurrentThreadId()}.`
+      )
+    );
+
+    stack.forEach((line) => {
+      line = line.includes("Niantic.")
+        ? color.hex("#D47676").italic(`${line}`)
+        : color.hex("#601414")(`${line}`);
+
+      line = line.replace(/(\(.+\))/, color.dim("$1"));
+
+      line = line.replace(
+        / *(--- .+ ---)/,
+        color.hex("#D47676").bold.italic("    $1")
+      );
+
+      line = line.replace(/ +at/, color.dim("    at"));
+      newStack.push(line);
+    });
+
+    console.log(newStack.join("\n"));
+  }
+  exceptionHandlerCallback(exception) {
+    let _exception$type;
+    const name = exception.name == "Error" || exception.name;
+    const message = exception.message || exception.name;
+
+    const type =
+      null == (_exception$type = exception.type)
+        ? exception.name || "Dittolib"
+        : _exception$type;
+
+    let stack = [];
+    try {
+      if (typeof exception.stack == "string") {
+        if (exception.stack.trim().includes("\n")) {
+          stack = exception.stack.split("\n");
+        } else if (exception.stack) {
+          stack.push(exception.stack.trim());
+        }
+      } else if (typeof exception.stack == "object") {
+        stack = exception.stack.toString().split("\n"); // removes lines until reaches first line with ' at'
+        for (let i = 0; i < stack.length; i++) {
+          const stack_i = stack[i];
+          if (stack_i.match(/^ +at/)) {
+            stack.splice(0, i);
+            break;
+          }
+        }
+      } else {
+        stack = exception.stack;
+      }
+      if (_telemetry.Telemetry.token && !type.startsWith("Il2CppError")) {
+        for (let i = 0; i < stack.length; i++) {
+          stack = stack.map((line) =>
+            line.replace(/script\d+.js:\d+:\d+/g, "script.js:1:1")
+          );
+
+          stack = stack.map((line) =>
+            line.replace(/\d*_agent.js:\d+:\d+/g, "agent.js:1:1")
+          );
+
+          stack = stack.map((line) =>
+            line.replace(/0x([0-9a-f]{4,16})/g, "0x0")
+          );
+        }
+        const data = {
+          type: "error",
+          date: new Date().toISOString(),
+          "@simple_error": {
+            name,
+            type,
+            message,
+            stack_trace: ` ${stack.join("\n")}${`\nHash: ${cyrb53(
+              type + message + stack
+            )}`}`,
+          },
+        };
+        _telemetry.Telemetry.sendErrorTelemetry(data);
+      }
+    } finally {
+      this.logException(name, message, type, stack);
+    }
+  }
+  installIl2cppExceptionListener(blacklist = ["System.Threading"]) {
+    const self = this;
+    info("Installing Il2Cpp exceptions listener...");
+
+    Interceptor.attach(
+      Module.findExportByName("libil2cpp.so", "__cxa_throw"),
+      (args) => {
+        const obj = args[0].readPointer();
+
+        const wrapper = _factory.default.cast(
+          obj,
+          _klass.default.getClass("System", "Exception")
+        );
+
+        const exception = self.formatIl2cppException(wrapper, blacklist);
+
+        if (exception) {
+          self.exceptionHandlerCallback(exception);
+        }
+      }
+    );
+  }
+  formatIl2cppException(
+    exceptionObject,
+    enableFilters = true,
+    blacklist = ["System.Threading"]
+  ) {
+    // do not change the order of the following methods!
+    // they are called in this order because of the way the
+    // exception object is dynamically created or populated
+    const exceptionToString = exceptionObject.ToString().trim();
+
+    const exceptionLineList = exceptionToString.split("\n");
+    const source = exceptionObject.get_Source();
+    const name = exceptionObject.GetClassName();
+    let message = [];
+
+    for (const line of exceptionLineList) {
+      if (line === undefined || line.match(/^ +at/)) {
+        break;
+      }
+      message.push(line.replace(`${name}:`, ""));
+    }
+
+    message = message.join(" "); // filters the remaining exceptionLineList (which at this point is the stack trace)
+    const stackTrace = enableFilters
+      ? this.filterIl2CppStacks(exceptionLineList, blacklist)
+      : exceptionLineList; // if filtered stack doesn't even contain actual
+    //  stacks, don't even log this exception
+    if (
+      !(stackTrace != null && stackTrace.some((line) => line.includes("at")))
+    ) {
+      return false;
+    } // creates the exception object
+    const exception = new Error();
+    exception.stack = stackTrace.join("\n");
+    exception.name = `${name}`;
+    exception.message = `${message}`;
+    exception.type = `Il2CppError | ${source}`;
+    return exception;
+  }
+  filterIl2CppStacks(lines, blacklist) {
+    lines = lines.map((line) =>
+      line
+        .replace(/ \[0x00000\] in <00000000000000000000000000000000>:0/g, "")
+        .replace(/^ *at/, "    at")
+    );
+
+    lines = lines.filter((line) => {
+      for (const blacklisted of blacklist) {
+        if (line.includes(blacklisted)) {
+          return false;
+        }
+      }
+      return true;
+    }); // removes all lines up to one of the two matches below
+
+    let removeCount = 0;
+
+    lines.forEach((line, i) => {
+      if (
+        line.includes("--- End of inner exception stack trace ---") ||
+        line.includes(
+          "--- End of stack trace from previous location where exception was thrown ---"
+        )
+      ) {
+        removeCount = i;
+      }
+    });
+
+    lines.splice(0, removeCount);
+
+    lines = lines.reduce(
+      (acc, curr) =>
+        acc.includes(curr) && !curr.includes("Niantic.") ? acc : [...acc, curr],
+      []
+    );
+
+    if (this.previousStack.threadId == Process.getCurrentThreadId()) {
+      lines = lines.filter((line) => !this.previousStack.lines.includes(line));
+    }
+
+    this.previousStack = {
+      threadId: Process.getCurrentThreadId(),
+      lines,
+    };
+
+    return lines;
+  }
+  /**
+     * Helper function to log to the console and logcat with colors and some formatting.
+     *
+     * @param {String}  input   Message to log.
+     * @param {String}  [_color] Color of the message. Can add "Bright" after the color too. Available choices:
+                                'black' 'red' 'green' 'yellow' 'blue' 'magenta' 'cyan' 'white' 'gray' 'grey'
+     * @param {Boolean} [date]  Set to false to skip the timestamp. Defaults to true.
+     * @param {Number}  [level] Sets the logcat logging level. Defaults to 4. (DEBUG = 3, INFO = 4, WARN = 5, ERROR = 6)
+     */ _log(input, _color = "magenta", date = true, level = 4, _bold = false) {
+    let _color2;
+    let output = date
+      ? `[${new Date().toISOString().replace(/.+T(.+)Z/, "$1")}] `
+      : "";
+    _color = null == (_color2 = _color) ? "magenta" : _color2;
+
+    return level == 6
+      ? this.exceptionHandlerCallback(input)
+      : void ((output = _bold
+          ? `${output}${color[_color.toLowerCase()].bold(input)}`
+          : `${output}${color[_color.toLowerCase()](input)}`),
+        console.log(output));
+  }
+}
+/**
+ * @description Gets the current stack trace up to this point.
+ */ function getStack() {
+  try {
+    return new Error().stack;
+  } catch (e) {}
+}
+function tryGetSourceFromStack(stack_trace) {
+  const file = RegExp(/\(((?!@pkmd.*)src[^\)]+)\)/).exec(stack_trace)[1];
+  return file ? file : undefined;
+}
+/**
+ * @description Tries to get the file name and line number from the agent
+ *              source that called the function stack up to this point.
+ *              Does it best effort to get the correct file name and line,
+ *              using some filters, but it's not always possible.
+ */ function getCallingFile(
+  filters = ["node_modules", "frida", "java", "ObjectInstance"]
+) {
+  try {
+    const stack = new Error().stack.split("\n");
+
+    for (const line of stack) {
+      if (
+        line.includes("at ") &&
+        !filters.some((filter) => line.includes(filter))
+      ) {
+        const match = line.match(/[^\/]\b(src.+:\d+:\d+).*/);
+        if (match) {
+          return match[1];
+        }
+      }
+    }
+
+    return stack.slice(1).join("\n");
+  } catch (e) {}
+}
+const _default = new ExceptionHandler();
+export default _default;

@@ -1,0 +1,662 @@
+import PogoUtils_1 from "../utils/PogoUtils";
+
+import {
+  oneLineBig,
+  RewardItem,
+  ShowQuestUpdate,
+  RewardItemStardust,
+  RewardItemWithSprite,
+  RewardItemMegaResource,
+} from "../utils/Toast";
+
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const I18n_1 = __importDefault(require("../utils/I18n"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const ObjectInstance_1 = __importDefault(require("../utils/ObjectInstance"));
+const UserData_1 = __importDefault(require("../utils/UserData"));
+const UnityUtils_1 = __importDefault(require("../utils/UnityUtils"));
+const PersistentPrefs_1 = __importDefault(require("../utils/PersistentPrefs"));
+const QUEST_REWARD_EXPERIENCE = 1;
+const QUEST_REWARD_ITEM = 2;
+const QUEST_REWARD_STARDUST = 3;
+const QUEST_REWARD_CANDY = 4;
+const QUEST_REWARD_AVATAR_CLOTHING = 5;
+const QUEST_REWARD_QUEST = 6;
+const QUEST_REWARD_POKEMON_ENCOUNTER = 7;
+const QUEST_REWARD_POKECOIN = 8;
+const QUEST_REWARD_XL_CANDY = 9;
+const QUEST_REWARD_LEVEL_CAP = 10;
+const QUEST_REWARD_STICKER = 11;
+const QUEST_REWARD_MEGA_RESOURCE = 12;
+const QUEST_REWARD_INCIDENT = 13;
+const QUEST_REWARD_PLAYER_ATTRIBUTE = 14;
+const QUEST_REWARD_EVENT_BADGE = 15;
+class AutoQuests extends ModuleBase_1.default {
+  constructor() {
+    super();
+    this.currentUsername = "";
+    this.PokemonAssetManagerInstance = null;
+    this.QuestRpcServiceInstance = null;
+    this.MilestoneRpcServiceInstance = null;
+    this.queue = new Map();
+    this.queueTimeout = undefined;
+    this.recycleList = [];
+    this.toggles = { autoClaim: false, claimPokemon: false };
+  }
+  init() {
+    super.init();
+
+    this.PokemonAssetManagerInstance = new ObjectInstance_1.default(
+      "Niantic.Holoholo.AssetBundles.PokemonAssetManager"
+    );
+
+    this.QuestRpcServiceInstance = new ObjectInstance_1.default(
+      "Niantic.Holoholo.Quests.QuestRpcService",
+      "UpdateQuestDetails"
+    );
+
+    this.MilestoneRpcServiceInstance = new ObjectInstance_1.default(
+      "MilestoneRpcServiceMaybe"
+    );
+
+    const self = this;
+
+    const QuestListChallengeItemView = ditto_1.default.use(
+      "Niantic.Holoholo.Quests.QuestListChallengeItemView"
+    );
+
+    QuestListChallengeItemView.RecycleClick.replace(function () {
+      const questId = this.clientQuestProto.quest_.questId_;
+      const questReward = self.getQuestReward(this.clientQuestProto.quest_);
+      const questSlug = `${questId}@${questReward}`;
+      PogoUtils_1.PogoUtils.showModal(
+        I18n_1.default.unity.getText("quests_remove_challenge_prompt"),
+        [
+          {
+            eventType: 1,
+            name: I18n_1.default.getText("common.ok"),
+            callback: () => {
+              self.removeQuest(questSlug);
+            },
+          },
+          {
+            eventType: 4,
+            name: I18n_1.default.getText("ui.autoQuests.autoRecycle"),
+            callback: () => {
+              self.recycleList.push(questSlug);
+              info(color.gray(`[QT] Added "${questSlug}" to recycle list`));
+              self.removeQuest(questSlug);
+
+              PersistentPrefs_1.default.set(
+                "r",
+                self.recycleList,
+                `${self.currentUsername}_Quests`
+              );
+            },
+          },
+          { eventType: 2, name: I18n_1.default.getText("common.cancel") },
+        ]
+      );
+    });
+
+    ditto_1.default
+      .use("QuestsProto")
+      ["pb::Niantic.Protobuf.IBufferMessage.InternalMergeFrom"].attach({
+        onLeave() {
+          const quests = this.quest_;
+          if (!(quests != null && quests.count)) {
+            return;
+          }
+          info(color.gray(`${quests.count} Quest(s) got updated`));
+          const recycleListSlugs = self.recycleList.map((slug) => {
+            const questRewardSlug = slug.split("@")[1];
+            const questSlug = slug.split(":")[0];
+            return `${questSlug}@${questRewardSlug}`;
+          });
+          self.checkPlayer();
+
+          quests.array.forEach((questProto) => {
+            if (!questProto) {
+              return;
+            }
+            if (questProto.status_ != 1) {
+              return;
+            }
+            const questProto_questId = questProto.questId_;
+            if (questProto.questType_ == 3) {
+              if (self.toggles.autoClaim) {
+                if (questProto.questContext_ == 10) {
+                  questProto.quest_.subQuests_.array.forEach((q) => {
+                    let _q$goal_;
+                    if (
+                      q &&
+                      q.status_ == 1 &&
+                      q.progress_ ==
+                        (null == (_q$goal_ = q.goal_) || _q$goal_.target_)
+                    ) {
+                      const q_questId = q.questId_;
+                      const rewardType = q.questRewards_.array[0].type_;
+                      if (
+                        rewardType == QUEST_REWARD_POKEMON_ENCOUNTER &&
+                        !self.toggles.claimPokemon
+                      ) {
+                        return;
+                      }
+                      info(
+                        color.gray(
+                          `[QT] Referral Reward ${questProto_questId}:${q_questId} can be claimed (progres: ${q.progress_} / ${q.goal_.target_})`
+                        )
+                      );
+                      const reward = q.questRewards_.array[0];
+                      let item = 0;
+                      let ammount = 0;
+                      if (rewardType == QUEST_REWARD_ITEM) {
+                        let _reward$reward_;
+                        let _reward$reward_2;
+
+                        item =
+                          reward == null ||
+                          null == (_reward$reward_ = reward.reward_) ||
+                          _reward$reward_.item_;
+
+                        ammount =
+                          reward == null ||
+                          null == (_reward$reward_2 = reward.reward_) ||
+                          _reward$reward_2.amount_;
+                      }
+                      self.completeQuest(q_questId, "", true, item, ammount);
+                    }
+                  });
+                } else {
+                  questProto.quest_.subQuests_.array.forEach((q) => {
+                    let _q$goal_2;
+                    if (
+                      q &&
+                      q.status_ == 1 &&
+                      q.progress_ ==
+                        (null == (_q$goal_2 = q.goal_) || _q$goal_2.target_)
+                    ) {
+                      const q_questId = q.questId_;
+                      if (
+                        !self.toggles.claimPokemon &&
+                        self.isEncounter(q.questRewards_)
+                      ) {
+                        return;
+                      }
+
+                      info(
+                        color.gray(
+                          `[QT] Quest ${questProto_questId}:${q_questId} can be claimed (progres: ${q.progress_} / ${q.goal_.target_})`
+                        )
+                      );
+
+                      self.completeQuest(questProto_questId, q_questId);
+                    }
+                  });
+                }
+              }
+            } else {
+              let _questProto$goal_;
+              if (
+                !(
+                  questProto.progress_ ==
+                  (null == (_questProto$goal_ = questProto.goal_) ||
+                    _questProto$goal_.target_)
+                )
+              ) {
+                const questReward = self.getQuestReward(questProto);
+                const questIdSlip = questProto_questId.split(":")[0];
+
+                if (
+                  recycleListSlugs.includes(`${questIdSlip}@${questReward}`)
+                ) {
+                  self.removeQuest(
+                    `${questProto_questId}@${questReward}`,
+                    true
+                  );
+                }
+              } else if (self.toggles.autoClaim) {
+                if (
+                  !self.toggles.claimPokemon &&
+                  self.isEncounter(questProto.questRewards_)
+                ) {
+                  return;
+                }
+
+                info(
+                  color.gray(
+                    `[QT] Quest ${questProto_questId} can be claimed (progres: ${questProto.progress_} / ${questProto.goal_.target_})`
+                  )
+                );
+
+                if (questProto_questId == "MP_WALK_QUEST") {
+                  return;
+                }
+
+                self.completeQuest(questProto_questId);
+              }
+            }
+          });
+        },
+      });
+
+    PogoUtils_1.PogoUtils.toggles.addToggleToGroup("advanced_settings", {
+      id: "advanced_quest_auto_claim",
+      name: "ui.autoQuests.tAutoClaim",
+      value: this.toggles.autoClaim,
+      description: "ui.autoQuests.tAutoClaimTip",
+      callback: (toggle) => {
+        this.toggles.autoClaim = toggle.value;
+
+        PersistentPrefs_1.default.set(
+          `${this.currentUsername}_toggles`,
+          this.toggles,
+          `${this.currentUsername}_Quests`
+        );
+
+        info(`[CD] Set Quest Auto Claim to ${this.toggles.autoClaim}`);
+      },
+    });
+
+    PogoUtils_1.PogoUtils.toggles.addToggleToGroup("advanced_settings", {
+      id: "advanced_quest_claim_pokemon",
+      name: "ui.autoQuests.tClaimPkmn",
+      value: this.toggles.claimPokemon,
+      description: "ui.autoQuests.tClaimPkmnTip",
+      callback: (toggle) => {
+        this.toggles.claimPokemon = toggle.value;
+
+        PersistentPrefs_1.default.set(
+          `${this.currentUsername}_toggles`,
+          this.toggles,
+          `${this.currentUsername}_Quests`
+        );
+
+        info(
+          `[CD] Set Quest Pokemon Auto Claim to ${this.toggles.claimPokemon}`
+        );
+      },
+    });
+
+    PogoUtils_1.PogoUtils.buttons.addButtonsToGroup("advanced_settings", [
+      {
+        id: "advanced_quest_clear_recycle_list",
+        name: "ui.autoQuests.bResetRecycleList",
+        description: "ui.autoQuests.bResetRecycleListTip",
+        callback: () => {
+          this.recycleList = [];
+
+          PersistentPrefs_1.default.set(
+            "r",
+            this.recycleList,
+            `${this.currentUsername}_Quests`
+          );
+
+          info(color.yellow("Cleared Quest Recycle List"));
+
+          oneLineBig(
+            I18n_1.default.getText("ui.autoQuests.bResetRecycleListSuccess")
+          );
+        },
+      },
+    ]);
+  }
+  processQueue() {
+    if (this.queue.size == 0) {
+      return;
+    }
+    if (!this.QuestRpcServiceInstance.value) {
+      return void warn("QuestRpcService is not availablea yet.");
+    }
+    if (this.queueTimeout) {
+      return;
+    }
+    this.queueTimeout = setTimeout(() => {
+      info(color.yellow("[QT] Queue timed out."));
+      this.queueTimeout = undefined;
+      this.processQueue();
+    }, 10000 /* 1e4 */);
+    const [pair] = this.queue.entries();
+    const [questId, task] = pair;
+    if (task.task == "claim") {
+      if (task.referral) {
+        info(color.gray(`[QT] Claiming Referral Reward "${questId}"...`));
+
+        const promise =
+          this.MilestoneRpcServiceInstance.value.CompleteMilestone(questId);
+
+        const action = UnityUtils_1.default.makeGenericAction(
+          `${questId}_claim_${Date.now()}`,
+          "System.Action`1",
+          "CompleteMilestoneOutProto",
+          (proto) => {
+            this.queue.delete(questId);
+
+            setTimeout(() => {
+              clearTimeout(this.queueTimeout);
+              this.queueTimeout = undefined;
+              this.processQueue();
+            }, 1);
+
+            const logMessage = `[QT] CompleteMilestoneOutProto<${questId}> - status: ${proto.status_}`;
+
+            info(
+              proto.status_ == 1
+                ? color.green(logMessage)
+                : color.red(logMessage)
+            );
+
+            if (proto.status_ == 1 && task.item && task.ammout) {
+              RewardItem(task.item, task.ammout);
+              ShowQuestUpdate(
+                I18n_1.default.getText("ui.autoQuests.milestoneClaimed")
+              );
+            }
+          },
+          null,
+          true
+        );
+
+        promise.base.Then(action);
+      } else {
+        const task_subID = task.subID;
+        info(
+          color.gray(
+            `[QT] Claiming Quest "${questId}${
+              task_subID ? `:${task_subID}` : ""
+            }"...`
+          )
+        );
+
+        const inflated = ditto_1.default
+          .use("System.Nullable`1")
+          .typeof.MakeGenericType([ditto_1.default.use("System.Int32").typeof]);
+
+        const specificActionClass = ditto_1.default.Core.createObject(
+          ditto_1.default.Il2cppApi.class_from_system_type(inflated.$instance)
+        );
+
+        const specificActionKlass = ditto_1.default.wrap(specificActionClass);
+
+        const promise = this.QuestRpcServiceInstance.value.CompleteQuest(
+          questId,
+          task_subID,
+          specificActionKlass
+        );
+
+        const action = UnityUtils_1.default.makeGenericAction(
+          `${questId}_claim_${Date.now()}`,
+          "System.Action`1",
+          "CompleteQuestOutProto",
+          (proto) => {
+            let _proto$quest_;
+            let _proto$quest_$quest_;
+            this.queue.delete(questId);
+
+            setTimeout(() => {
+              clearTimeout(this.queueTimeout);
+              this.queueTimeout = undefined;
+              this.processQueue();
+            }, 1);
+
+            const logMessage = `[QT] CompleteQuestOutProto<${questId}> - status: ${proto.status_}`;
+            info(
+              proto.status_ == 1
+                ? color.green(logMessage)
+                : color.red(logMessage)
+            );
+            const rewards =
+              null == (_proto$quest_ = proto.quest_) ||
+              null == (_proto$quest_$quest_ = _proto$quest_.quest_) ||
+              _proto$quest_$quest_.questRewards_;
+
+            if (rewards) {
+              rewards.array.forEach((questRewardProto) => {
+                if (questRewardProto) {
+                  const questRewardProto_reward = questRewardProto.reward_;
+                  switch (questRewardProto.type_) {
+                    case QUEST_REWARD_ITEM: {
+                      RewardItem(
+                        questRewardProto_reward.item_,
+                        questRewardProto_reward.amount_
+                      );
+                      break;
+                    }
+                    case QUEST_REWARD_STARDUST: {
+                      RewardItemStardust(questRewardProto_reward.m_value);
+                      break;
+                    }
+                    case QUEST_REWARD_POKEMON_ENCOUNTER: {
+                      const questRewardProto_reward_isHiddenDitto =
+                        questRewardProto_reward.isHiddenDitto_;
+                      const pokemonID = questRewardProto_reward.type_.m_value;
+
+                      const spriteReq =
+                        this.PokemonAssetManagerInstance.value.RequestSprite(
+                          pokemonID,
+                          questRewardProto_reward_isHiddenDitto
+                            ? questRewardProto_reward.dittoDisplay_
+                            : questRewardProto_reward.pokemonDisplay_,
+                          false
+                        );
+
+                      const spriteReqAction = UnityUtils_1.default.makeAction(
+                        `${questId}_asset_${spriteReq.$instance}`,
+                        "System.Action",
+                        () => {
+                          RewardItemWithSprite(
+                            spriteReq.assetPromise.completedValue,
+                            spriteReq,
+                            I18n_1.default.unity.getPokemonNameFromId(
+                              pokemonID
+                            ),
+                            1
+                          );
+                        },
+                        true
+                      );
+
+                      spriteReq.assetPromise.Then(spriteReqAction);
+                      break;
+                    }
+                    case QUEST_REWARD_MEGA_RESOURCE: {
+                      RewardItemMegaResource(
+                        questRewardProto_reward.pokemonId_,
+                        questRewardProto_reward.amount_
+                      );
+                    }
+                  }
+                }
+              });
+
+              ShowQuestUpdate(
+                I18n_1.default.getText("ui.autoQuests.rewardClaimed")
+              );
+            }
+          },
+          null,
+          true
+        );
+
+        promise.Then(action);
+      }
+    } else if (task.task == "recycle") {
+      const questRemoveId = questId.split("@")[0];
+      info(color.gray(`[QT] Recycling quest "${questRemoveId}"...`));
+
+      const promise =
+        this.QuestRpcServiceInstance.value.RemoveQuest(questRemoveId);
+
+      const action = UnityUtils_1.default.makeGenericAction(
+        `${questRemoveId}_recycle_${Date.now()}`,
+        "System.Action`1",
+        "RemoveQuestOutProto",
+        (proto) => {
+          this.queue.delete(questId);
+
+          setTimeout(() => {
+            clearTimeout(this.queueTimeout);
+            this.queueTimeout = undefined;
+            this.processQueue();
+          }, 1);
+
+          const logMessage = `[QT] RemoveQuestOutProto<${questRemoveId}> - status: ${proto.status_}`;
+
+          info(
+            proto.status_ == 1 ? color.green(logMessage) : color.red(logMessage)
+          );
+
+          if (task.toats) {
+            ShowQuestUpdate(
+              I18n_1.default.getText("ui.autoQuests.questRemoved")
+            );
+          }
+        },
+        null,
+        true
+      );
+
+      promise.base.Then(action);
+    }
+  }
+  removeQuest(questSlug, showToast = false) {
+    this.queue.set(questSlug, { task: "recycle", toats: showToast });
+    this.processQueue();
+  }
+  completeQuest(
+    questId,
+    subQuestId = "",
+    referral = false,
+    item = 0,
+    ammout = 0
+  ) {
+    this.queue.set(questId, {
+      task: "claim",
+      subID: subQuestId,
+      referral,
+      item,
+      ammout,
+    });
+
+    this.processQueue();
+  }
+  checkPlayer() {
+    const playerName = UserData_1.default.username;
+
+    if (this.currentUsername != playerName) {
+      info(
+        color.yellowBright(
+          `[QT] player has changed: "${this.currentUsername}" > "${playerName}"`
+        )
+      );
+
+      this.currentUsername = playerName;
+      this.recycleList = [];
+
+      this.recycleList = PersistentPrefs_1.default.get(
+        "r",
+        [],
+        `${this.currentUsername}_Quests`
+      );
+
+      info(
+        color.cyan(
+          `[QT] Added ${this.recycleList.length} quest(s) to recycle list`
+        )
+      );
+
+      this.toggles = PersistentPrefs_1.default.get(
+        `${this.currentUsername}_toggles`,
+        { autoClaim: false, claimPokemon: false },
+        `${this.currentUsername}_Quests`
+      );
+
+      info(`[QT] Set Auto Claim to ${color.cyan(this.toggles.autoClaim)}`);
+
+      info(
+        `[QT] Set Auto Claim Pokemon to ${color.cyan(
+          this.toggles.claimPokemon
+        )}`
+      );
+
+      PogoUtils_1.PogoUtils.toggles.updateToggleValue(
+        "advanced_quest_auto_claim",
+        this.toggles.autoClaim
+      );
+
+      PogoUtils_1.PogoUtils.toggles.updateToggleValue(
+        "advanced_quest_claim_pokemon",
+        this.toggles.claimPokemon
+      );
+    }
+  }
+  isEncounter(rfQuestRewardProto) {
+    return rfQuestRewardProto.array.some((questRewardProto) => {
+      if (
+        questRewardProto.type_ == QUEST_REWARD_POKEMON_ENCOUNTER ||
+        questRewardProto.type_ == QUEST_REWARD_INCIDENT
+      ) {
+        return true;
+      }
+    });
+  }
+  getQuestReward(questProto) {
+    const questRewardProto = questProto.questRewards_.array[0];
+    if (!questRewardProto) {
+      return "null";
+    }
+
+    const { reward_, type_ } = questRewardProto;
+
+    let questSlug;
+    switch (type_) {
+      case QUEST_REWARD_EXPERIENCE: {
+        questSlug = `xpx${reward_.m_value}`;
+        break;
+      }
+      case QUEST_REWARD_ITEM: {
+        questSlug = `${reward_.item_}x${reward_.amount_}`;
+        break;
+      }
+      case QUEST_REWARD_STARDUST: {
+        questSlug = `dustx${reward_.m_value}`;
+        break;
+      }
+      case QUEST_REWARD_CANDY: {
+        questSlug = `candy${reward_.pokemonId_}x${reward_.amount_}`;
+        break;
+      }
+      case QUEST_REWARD_POKEMON_ENCOUNTER: {
+        const isShiny = reward_.pokemonDisplay_
+          ? reward_.pokemonDisplay_.shiny_
+            ? "shiny"
+            : ""
+          : "";
+
+        const isHiddenDitto = reward_.isHiddenDitto_ ? "(ditto)" : "";
+        questSlug = `encounterx${reward_.type_.m_value}${isShiny}${isHiddenDitto}`;
+        break;
+      }
+      case QUEST_REWARD_XL_CANDY: {
+        questSlug = `xlcandy${reward_.pokemonId_}x${reward_.amount_}`;
+        break;
+      }
+      case QUEST_REWARD_LEVEL_CAP: {
+        questSlug = `lvl${reward_.m_value}`;
+        break;
+      }
+      case QUEST_REWARD_MEGA_RESOURCE: {
+        questSlug = `megae${reward_.pokemonId_}x${reward_.amount_}`;
+        break;
+      }
+      default: {
+        questSlug = "UnknownQuest";
+        warn(`[QT] Unknown Quest Reward Type: ${type_}`);
+      }
+    }
+    return `${type_}${questSlug}`;
+  }
+}
+export default AutoQuests;

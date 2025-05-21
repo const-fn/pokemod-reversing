@@ -1,0 +1,69 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+class BlockNonShiny extends ModuleBase_1.default {
+  constructor() {
+    super();
+
+    this.encounterToCheck = [
+      "WildMapPokemon",
+      "TroyDiskMapPokemon",
+      "MapPlacePokemon",
+      "IncenseMapPokemon",
+      "PoiMapPokemon",
+    ];
+  }
+  init() {
+    super.init();
+    const self = this;
+
+    const EncounterState = ditto_1.default.use(
+      "Niantic.Holoholo.Encounter.EncounterState"
+    );
+
+    EncounterState.BeginEncounterApproach.replace(function () {
+      let mapPokemon = this.get_MapPokemon();
+
+      if (mapPokemon.$className == "TroyDiskMapPokemon") {
+        mapPokemon = ditto_1.default.cast(
+          mapPokemon,
+          "Niantic.Holoholo.Map.PoiMapPokemon"
+        );
+      }
+
+      if (mapPokemon.$className == "TroyDiskMapPlacePokemon") {
+        mapPokemon = ditto_1.default.cast(
+          mapPokemon,
+          "Niantic.Holoholo.Map.MapPlacePokemon"
+        );
+      }
+
+      const encounterId = mapPokemon.get_EncounterId();
+
+      console.log(
+        `encounterType ${mapPokemon.$className} encounterId ${encounterId}`
+      );
+
+      if (
+        self.encounterToCheck.includes(mapPokemon.$className) &&
+        !this.get_IsEncounteredPokemonShiny()
+      ) {
+        this.EncounterStateComplete(3);
+
+        this.get_MapPokemon().mapEntityService.BlocklistEncounter(encounterId);
+      } else {
+        this.ApproachComplete();
+      }
+    });
+    const UserPromptsService = ditto_1.default.use(
+      "Niantic.Holoholo.UI.UserPromptsService"
+    );
+    UserPromptsService.ShowNonBlockingError.overloads.forEach((o) => {
+      o.replace(function (error, timeout) {
+        return error == 25 || this.ShowNonBlockingError(error, timeout);
+      });
+    });
+  }
+}
+export default BlockNonShiny;

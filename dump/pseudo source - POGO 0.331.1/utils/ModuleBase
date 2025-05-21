@@ -1,0 +1,60 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const UserData_1 = __importDefault(require("./UserData"));
+class ModuleBase {
+  constructor() {
+    info(color.magenta.bold(`Loading ${this.constructor.name}...`));
+  }
+  init() {
+    info(color.green.bold(`Enabling ${this.constructor.name}...`));
+  }
+  isEnabled(moduleName) {
+    return UserData_1.default.enabledModules.includes(moduleName);
+  }
+}
+export default ModuleBase;
+const interceptedMethods = {
+  HandleOpenComplete: null,
+  CombatDirectorProperties: false,
+};
+class CombatModule extends ModuleBase {
+  constructor() {
+    super();
+    this.combatType = undefined;
+    this.combatType = 0;
+  }
+  init() {
+    super.init();
+    const CombatDirectorProperties = ditto_1.default.use(
+      "Niantic.Holoholo.Combat.Util.CombatDirectorProperties"
+    );
+
+    if (!interceptedMethods.CombatDirectorProperties) {
+      interceptedMethods.CombatDirectorProperties = true;
+
+      CombatDirectorProperties.get_EndCombatPreFadeOutSeconds.attach({
+        onEnter() {
+          this.endCombatPreFadeOutSeconds = 0;
+          this.endCombatFadeOutSeconds = 0;
+          this.cameraMovementDurationSeconds = 0;
+          this.startCombatFadeTransitionSeconds = 0;
+        },
+      });
+    }
+
+    const NpcTrainerInterstitialGui = ditto_1.default.use(
+      "Niantic.Holoholo.Combat.NpcTrainers.NpcTrainerInterstitialGui"
+    );
+
+    if (!interceptedMethods.HandleOpenComplete) {
+      interceptedMethods.HandleOpenComplete =
+        NpcTrainerInterstitialGui.HandleOpenComplete.attach({
+          onLeave() {
+            this.PressChallenge();
+          },
+        });
+    }
+  }
+}
+export { CombatModule };

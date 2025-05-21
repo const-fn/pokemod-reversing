@@ -1,0 +1,696 @@
+import { getPokemonLevel } from "../utils/PokemonData";
+import { rainbowText, getSupString } from "../utils/TextEffects";
+import PogoUtils_1 from "../utils/PogoUtils";
+import { oneLineMedium } from "../utils/Toast";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const I18n_1 = __importDefault(require("../utils/I18n"));
+class IVsInventory extends ModuleBase_1.default {
+  constructor() {
+    super();
+    this.disableIvNames = false;
+    this.showFormIDs = false;
+    this._UnityObject = undefined;
+    this._Text = undefined;
+    this._Vector2 = undefined;
+    this._Vector3 = undefined;
+    this.eliteMoves = [];
+    this.selectedMove = 0;
+  }
+  init() {
+    super.init();
+    this._UnityObject = ditto_1.default.use("UnityEngine.Object");
+    this._Text = ditto_1.default.use("UnityEngine.UI.Text");
+    this._Vector2 = ditto_1.default.use("UnityEngine.Vector2");
+    this._Vector3 = ditto_1.default.use("UnityEngine.Vector3");
+
+    PogoUtils_1.PogoUtils.addCheatCode("ShowMeTheMoney", () => {
+      this.showFormIDs = !this.showFormIDs;
+
+      oneLineMedium(`${this.showFormIDs ? "Enabled" : "Disabled"} Form IDs`);
+    });
+
+    const self = this;
+
+    const pokemonWithForm = [
+      201, 327, 386, 412, 413, 479, 585, 586, 649, 664, 665, 666, 669, 670, 671,
+      676, 710, 711, 741,
+    ];
+
+    const PokemonInventoryListLine = ditto_1.default.use(
+      "Niantic.Holoholo.UI.PokemonInventoryListLine"
+    );
+
+    PokemonInventoryListLine.set_OrderedBy.attach({
+      onEnter(args) {
+        self.disableIvNames = args[0] == 2;
+      },
+    });
+    const PokemonInventoryCellView = ditto_1.default.use(
+      "Niantic.Holoholo.UI.PokemonInventoryCellView"
+    );
+    PokemonInventoryCellView.Initialize.attach({
+      onEnter(args) {
+        this._data = args[0];
+      },
+      onLeave() {
+        const pokemonProto = this._data.PokemonProtoField;
+        const formTextRTFromFindChild =
+          this.clickArea.base.FindChild("FormText");
+        let formText;
+
+        if (formTextRTFromFindChild) {
+          formText = formTextRTFromFindChild.base.base.GetComponentInChildren(
+            self._Text.typeof
+          );
+
+          formText.set_text("");
+        }
+
+        this.nameText.set_supportRichText(!self.disableIvNames);
+
+        if (!pokemonProto) {
+          return;
+        }
+
+        if (self.disableIvNames) {
+          return void this.nameText.set_alignment(6);
+        }
+        const newNickname = self.getNewNickname(pokemonProto);
+        this.nameText.set_alignment(7);
+        this.nameText.set_text(newNickname);
+
+        if (!formText) {
+          formText = self._UnityObject.Instantiate(
+            this.nameText,
+            this.clickArea.base
+          );
+          const formTextTransform =
+            formText.base.base["UnityEngine.UI.ICanvasElement.get_transform"]();
+          formTextTransform.base.base.base.set_name("FormText");
+          formTextTransform.set_offsetMin(self._Vector2.$new(0, 220));
+          formTextTransform.set_offsetMax(self._Vector2.$new(215, 290));
+          formText.set_fontSize(16);
+          formText.set_verticalOverflow(1);
+          formText.set_horizontalOverflow(1);
+          formText.set_alignment(7);
+          formText.set_supportRichText(true);
+          formText.set_text("");
+        }
+
+        if (!pokemonProto.pokemonDisplay_) {
+          return;
+        }
+        const pokemonProto_pokemonId = pokemonProto.pokemonId_;
+        const form = pokemonProto.pokemonDisplay_.form_;
+        if (self.showFormIDs) {
+          const costume = pokemonProto.pokemonDisplay_.originalCostume_;
+          if (form || costume) {
+            let idString = "";
+
+            if (form) {
+              idString = `Form: ${form}`;
+            }
+
+            if (costume) {
+              idString && (idString += ", ");
+              idString += `Costume: ${costume}`;
+            }
+
+            formText.set_text(`<size=16>${idString}</size>`);
+          }
+        } else {
+          if (pokemonWithForm.includes(pokemonProto_pokemonId)) {
+            formText.set_text(
+              `<size=16>${self.getFormName(
+                form,
+                pokemonProto_pokemonId
+              )}</size>`
+            );
+          }
+        }
+      },
+    });
+    const PokemonInfoPanel = ditto_1.default.use(
+      "Niantic.Holoholo.UI.Pokemon.PokemonInfoPanel"
+    );
+
+    PokemonInfoPanel.DoUpdate.attach({
+      onEnter(args) {
+        this._pokemonProto = args[0];
+      },
+      onLeave() {
+        const containerRT = this.cpUiRoot.base.GetChild(1);
+        const formTextRTFromFindChild = containerRT.base.FindChild("FormText");
+        let formText;
+
+        if (formTextRTFromFindChild) {
+          formText = formTextRTFromFindChild.base.base.GetComponentInChildren(
+            self._Text.typeof
+          );
+
+          formText.set_text("");
+        }
+
+        this.nameText.set_supportRichText(!self.disableIvNames);
+
+        if (!this._pokemonProto) {
+          return;
+        }
+
+        if (self.disableIvNames) {
+          return void this.nameText.set_fontSize(48);
+        }
+        const newNickname = self.getNewNickname(
+          this._pokemonProto,
+          this.nameText.get_text()
+        );
+        this.nameText.set_fontSize(30);
+        this.nameText.set_text(newNickname);
+
+        if (!formText) {
+          formText = self._UnityObject.Instantiate(
+            this.type1Text,
+            containerRT.base
+          );
+          const formTextTransform =
+            formText.base.base["UnityEngine.UI.ICanvasElement.get_transform"]();
+          formTextTransform.base.base.base.set_name("FormText");
+          formTextTransform.set_offsetMin(self._Vector2.$new(-365, 390));
+          formTextTransform.set_offsetMax(self._Vector2.$new(385, 455));
+          formText.set_fontSize(0);
+          formText.set_alignment(7);
+          formText.set_supportRichText(true);
+          formText.set_text("");
+        }
+
+        if (!this._pokemonProto.pokemonDisplay_) {
+          return;
+        }
+        const pokemonId = this._pokemonProto.pokemonId_;
+        const form = this._pokemonProto.pokemonDisplay_.form_;
+        if (self.showFormIDs) {
+          const costume = this._pokemonProto.pokemonDisplay_.originalCostume_;
+          if (form || costume) {
+            let idString = "";
+
+            if (form) {
+              idString = `Form: ${form}`;
+            }
+
+            if (costume) {
+              idString && (idString += ", ");
+              idString += `Costume: ${costume}`;
+            }
+
+            formText.set_text(
+              `<size=24><color=#FFFFFF>${idString} </color></size>`
+            );
+          }
+        } else {
+          if (pokemonWithForm.includes(pokemonId)) {
+            formText.set_text(
+              `<size=24><color=#FFFFFF>${self.getFormName(
+                form,
+                pokemonId
+              )}</color></size>`
+            );
+          } else if (Math.random() < 0.00097656 /* 97656e-8 */) {
+            formText.set_text("youtube.com/watch?v=dQw4w9WgXcQ");
+          }
+        }
+      },
+    });
+
+    PokemonInfoPanel.OnSubmitNickname.attach({
+      onEnter() {
+        this.nameText.set_fontSize(48);
+      },
+    });
+
+    const PokemonInventoryGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.UI.Pokemon.PokemonInventoryGuiController"
+    );
+    PokemonInventoryGuiController.Initialize.attach({
+      onLeave() {
+        const searchGroupRectTransformChildBase =
+          this.searchGroupRectTransform.base.GetChild(1).base;
+
+        searchGroupRectTransformChildBase.set_localScale(
+          self._Vector3.$new(1, 0.8, 1)
+        );
+
+        searchGroupRectTransformChildBase
+          .GetChild(0)
+          .base.set_localScale(self._Vector3.$new(1, 1.25, 1));
+
+        searchGroupRectTransformChildBase
+          .GetChild(1)
+          .base.set_localScale(self._Vector3.$new(1, 1.25, 1));
+
+        searchGroupRectTransformChildBase.set_position(
+          self._Vector3.$new(0, 0, 226)
+        );
+      },
+    });
+    const BulkUpgradeConfirmationDialog = ditto_1.default.use(
+      "Niantic.Holoholo.UI.BulkUpgradeConfirmationDialog"
+    );
+
+    BulkUpgradeConfirmationDialog.OnUpdateValue.attach({
+      onLeave() {
+        self.formatPowerUpWidget(this);
+      },
+    });
+
+    BulkUpgradeConfirmationDialog.Initialize.attach({
+      onLeave() {
+        self.formatPowerUpWidget(this);
+      },
+    });
+
+    const EliteTmGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.UI.EliteTmGuiController"
+    );
+
+    EliteTmGuiController.Initialize.attach({
+      onEnter(args) {
+        const pokemonProto = args[0]._Pokemon_k__BackingField;
+        const item = args[0]._Item_k__BackingField;
+
+        const pokemonSettingsProto =
+          pokemonProto == null || pokemonProto.cachedSettingsProto;
+
+        if (pokemonSettingsProto) {
+          self.eliteMoves = [];
+          self.selectedMove = 0;
+
+          item == 1204
+            ? (pokemonSettingsProto.eliteCinematicMove_.count > 0 &&
+                pokemonSettingsProto.eliteCinematicMove_.array.forEach(
+                  (moveID) => {
+                    if (moveID) {
+                      self.eliteMoves.push(moveID);
+                    }
+                  }
+                ),
+              !pokemonProto.move3_ && (self.selectedMove = pokemonProto.move2_))
+            : item == 1203 &&
+              (pokemonSettingsProto.eliteQuickMove_.count > 0 &&
+                pokemonSettingsProto.eliteQuickMove_.array.forEach((moveID) => {
+                  if (moveID) {
+                    self.eliteMoves.push(moveID);
+                  }
+                }),
+              (self.selectedMove = pokemonProto.move1_));
+        }
+      },
+      onLeave() {
+        self.paintForgetMoveName(this.forgetMoveNameText);
+      },
+    });
+
+    EliteTmGuiController.ContinuePressed.attach({
+      onLeave() {
+        self.paintForgetMoveName(this.forgetMoveNameText);
+      },
+    });
+
+    const MoveSelectionListItemView = ditto_1.default.use(
+      "Niantic.Holoholo.UI.MoveSelectionListItemView"
+    );
+
+    MoveSelectionListItemView.Initialize.attach({
+      onLeave() {
+        const moveID = this.get_MoveId();
+        if (self.eliteMoves.includes(moveID)) {
+          const moveTitle = this._moveTitle.get_text();
+          this._moveTitle.set_supportRichText(true);
+          this._moveTitle.set_text(rainbowText(moveTitle));
+        }
+      },
+    });
+
+    MoveSelectionListItemView.OnButtonPressed.attach({
+      onLeave() {
+        self.selectedMove = this.get_MoveId();
+      },
+    });
+
+    const PokemonInfoPanelMoveSection = ditto_1.default.use(
+      "Niantic.Holoholo.UI.Pokemon.PokemonInfoPanelMoveSection"
+    );
+    PokemonInfoPanelMoveSection.DoUpdate.attach({
+      onLeave() {
+        let _this$_abilitiesWidge;
+        let _this$_abilitiesWidge2;
+        if (!this._pokemon) {
+          return;
+        }
+        const pokemonSettingsProto = this._pokemon.cachedSettingsProto;
+        if (!pokemonSettingsProto) {
+          return;
+        }
+        const eliteMoves = [];
+
+        if (pokemonSettingsProto.eliteCinematicMove_.count > 0) {
+          pokemonSettingsProto.eliteCinematicMove_.array.forEach((moveID) => {
+            if (moveID) {
+              eliteMoves.push(moveID);
+            }
+          });
+        }
+
+        if (pokemonSettingsProto.eliteQuickMove_.count > 0) {
+          pokemonSettingsProto.eliteQuickMove_.array.forEach((moveID) => {
+            if (moveID) {
+              eliteMoves.push(moveID);
+            }
+          });
+        }
+
+        if (pokemonSettingsProto.nonTmCinematicMoves_.count > 0) {
+          pokemonSettingsProto.nonTmCinematicMoves_.array.forEach((moveID) => {
+            if (moveID) {
+              eliteMoves.push(moveID);
+            }
+          });
+        }
+
+        if (
+          null != (_this$_abilitiesWidge = this._abilitiesWidgetGymRaids) &&
+          _this$_abilitiesWidge.pokemonAbilities
+        ) {
+          this._abilitiesWidgetGymRaids.pokemonAbilities.forEach((element) => {
+            if (eliteMoves.includes(element.moveId)) {
+              element.abilityTitleText.set_text(
+                rainbowText(element.abilityTitleText.get_text())
+              );
+            }
+          });
+        }
+
+        if (
+          null !=
+            (_this$_abilitiesWidge2 = this._abilitiesWidgetTrainerBattles) &&
+          _this$_abilitiesWidge2.pokemonAbilities
+        ) {
+          this._abilitiesWidgetTrainerBattles.pokemonAbilities.forEach(
+            (element) => {
+              if (eliteMoves.includes(element.moveId)) {
+                element.abilityTitleText.set_text(
+                  rainbowText(element.abilityTitleText.get_text())
+                );
+              }
+            }
+          );
+        }
+      },
+    });
+  }
+  paintForgetMoveName(text) {
+    if (this.eliteMoves.includes(this.selectedMove)) {
+      text.set_supportRichText(true);
+      text.set_text(rainbowText(text.get_text()));
+    }
+  }
+  formatPowerUpWidget(instance) {
+    const upgradedpokemon = instance.data.UpgradeProto.upgradedPokemon_;
+
+    const startinglevel =
+      getPokemonLevel(
+        upgradedpokemon.cpMultiplier_ + upgradedpokemon.additionalCpMultiplier_
+      ) - 0.5;
+
+    let newlevel = startinglevel + 0.5 * (instance.currentIndex + 1);
+    let poweruptext = instance.base.title.m_Text.replace("\u2192", "\u2192 ");
+
+    if (newlevel === 40) {
+      poweruptext += `\nlevel ${startinglevel} \u2192 <color=#ff00ee>${newlevel}</color><color=#f7fff5>.0</color>`;
+    } else if (newlevel === 50) {
+      poweruptext += `\nlevel ${startinglevel} \u2192 <color=#FF8484>${newlevel}</color><color=#f7fff5>.0</color>`;
+    } else {
+      0 == newlevel % 1 && (newlevel += "<color=#f7fff5>.0</color>");
+      poweruptext += `\nlevel ${startinglevel} \u2192 ${newlevel}`;
+    }
+
+    instance.base.title.set_text(poweruptext);
+  }
+  getNewNickname(proto, originalName = "") {
+    let newNickname = "";
+    if (!this.disableIvNames) {
+      const {
+        individualAttack_,
+        individualDefense_,
+        individualStamina_,
+        pokemonId_,
+      } = proto;
+
+      let pokemonLevel = getPokemonLevel(
+        proto.cpMultiplier_ + proto.additionalCpMultiplier_
+      );
+      pokemonLevel =
+        pokemonLevel >= 50
+          ? `<color=#FF8484>${String.fromCodePoint(7480)}${getSupString(
+              pokemonLevel
+            )}</color>`
+          : String.fromCodePoint(7480) + getSupString(pokemonLevel);
+      let pokemonIv = Math.round(
+        (100 * (individualAttack_ + individualDefense_ + individualStamina_)) /
+          45
+      );
+
+      pokemonIv =
+        pokemonIv == 100
+          ? `<color=#FF8484>${pokemonIv}<size=20>%</size></color>${String.fromCodePoint(
+              8197
+            )}`
+          : pokemonIv == 0
+          ? `<color=#76AAFF>${pokemonIv}<size=20>%</size></color>${String.fromCodePoint(
+              8197
+            )}`
+          : `${pokemonIv}<size=20>%</size>${String.fromCodePoint(8197)}`;
+
+      newNickname = originalName ? `<size=48>${originalName}</size>\n` : "";
+
+      newNickname +=
+        pokemonIv +
+        `<size=18>${individualAttack_}</size><size=15>/</size><size=18>${individualDefense_}</size><size=15>/</size><size=18>${individualStamina_}</size>` +
+        String.fromCodePoint(8198) +
+        pokemonLevel;
+
+      if (pokemonId_ == 129 || pokemonId_ == 19) {
+        const { heightM_, weightKg_ } = proto;
+
+        const {
+          heightStdDev_,
+          pokedexHeightM_,
+          weightStdDev_,
+          pokedexWeightKg_,
+        } = proto.get_settingsProto();
+
+        if (
+          (pokemonId_ == 129 &&
+            {
+              height: (heightM_ - pokedexHeightM_) / heightStdDev_,
+              weight: (weightKg_ - pokedexWeightKg_) / weightStdDev_,
+            }.weight >= 2.5) ||
+          (pokemonId_ == 19 && weightKg_ <= 2.41625)
+        ) {
+          newNickname = rainbowText(newNickname);
+        }
+      }
+    }
+    return newNickname;
+  }
+  getFormName(form, pokemonID) {
+    if (!form || !pokemonID) {
+      return "";
+    }
+    switch (pokemonID) {
+      case 201:
+      case 327: {
+        return `${I18n_1.default.unity.getPokemonNameFromId(
+          pokemonID
+        )} ${this.getFormString(form)}`;
+      }
+      case 412: {
+        form -= 31;
+        break;
+      }
+      case 479: {
+        if (form == 81) {
+          return "";
+        }
+        break;
+      }
+      case 586: {
+        form -= 4;
+        break;
+      }
+      case 664: {
+        form -= 151;
+
+        if (form == 2597 || form == 2607) {
+          return this.getFormString(form);
+        }
+
+        break;
+      }
+      case 665: {
+        form -= 171;
+
+        if (form == 2597 || form == 2607) {
+          return this.getFormString(form);
+        }
+
+        break;
+      }
+      case 666: {
+        if (form == 2597 || form == 2607) {
+          return this.getFormString(form);
+        }
+        break;
+      }
+      case 670: {
+        form -= 5;
+        break;
+      }
+      case 671: {
+        form -= 10;
+        break;
+      }
+      case 711: {
+        form -= 4;
+      }
+    }
+    const formString = this.getFormString(form);
+    const text = I18n_1.default.unity.getText(formString);
+    const result = text.replace("-\n ", " - ").replace("\n", " ");
+    return result;
+  }
+  getFormString(form) {
+    let _forms$form;
+    return null ==
+      (_forms$form = {
+        1: "A",
+        2: "B",
+        3: "C",
+        4: "D",
+        5: "E",
+        6: "F",
+        7: "G",
+        8: "H",
+        9: "I",
+        10: "J",
+        11: "K",
+        12: "L",
+        13: "M",
+        14: "N",
+        15: "O",
+        16: "P",
+        17: "Q",
+        18: "R",
+        19: "S",
+        20: "T",
+        21: "U",
+        22: "V",
+        23: "W",
+        24: "X",
+        25: "Y",
+        26: "Z",
+        27: "!",
+        28: "?",
+        33: "form_deoxys_normal",
+        34: "form_attack",
+        35: "form_defense",
+        36: "form_speed",
+        37: "1",
+        38: "2",
+        39: "3",
+        40: "4",
+        41: "5",
+        42: "6",
+        43: "7",
+        44: "8",
+        81: "NORMAL",
+        82: "form_frost",
+        83: "form_fan",
+        84: "form_mow",
+        85: "form_wash",
+        86: "form_heat",
+        87: "form_plant_cloak",
+        88: "form_sandy_cloak",
+        89: "form_trash_cloak",
+        121: "9",
+        122: "10",
+        123: "11",
+        124: "12",
+        125: "13",
+        126: "14",
+        127: "15",
+        128: "16",
+        129: "17",
+        130: "18",
+        131: "19",
+        132: "20",
+        585: "form_spring",
+        586: "form_summer",
+        587: "form_autumn",
+        588: "form_winter",
+        593: "form_no_drive",
+        594: "form_shock_drive",
+        595: "form_burn_drive",
+        596: "form_chill_drive",
+        597: "form_douse_drive",
+        2594: "badge_butterfly_collector_archipelago_title",
+        2595: "badge_butterfly_collector_continental_title",
+        2596: "badge_butterfly_collector_elegant_title",
+        2597: "Fancy",
+        2598: "badge_butterfly_collector_garden_title",
+        2599: "badge_butterfly_collector_high_plains_title",
+        2600: "badge_butterfly_collector_icy_snow_title",
+        2601: "badge_butterfly_collector_jungle_title",
+        2602: "badge_butterfly_collector_marine_title",
+        2603: "badge_butterfly_collector_meadow_title",
+        2604: "badge_butterfly_collector_modern_title",
+        2605: "badge_butterfly_collector_monsoon_title",
+        2606: "badge_butterfly_collector_ocean_title",
+        2607: "Pokeball",
+        2608: "badge_butterfly_collector_polar_title",
+        2609: "badge_butterfly_collector_river_title",
+        2610: "badge_butterfly_collector_sandstorm_title",
+        2611: "badge_butterfly_collector_savannah_title",
+        2612: "badge_butterfly_collector_sun_title",
+        2613: "badge_butterfly_collector_tundra_title",
+        2614: "form_floette_red",
+        2615: "form_floette_yellow",
+        2616: "form_floette_orange",
+        2617: "form_floette_blue",
+        2618: "form_floette_white",
+        2629: "form_furfrou_natural",
+        2630: "form_furfrou_heart",
+        2631: "form_furfrou_star",
+        2632: "form_furfrou_diamond",
+        2633: "form_furfrou_debutante",
+        2634: "form_furfrou_matron",
+        2635: "form_furfrou_dandy",
+        2636: "form_furfrou_la_reine",
+        2637: "form_furfrou_kabuki",
+        2638: "form_furfrou_pharaoh",
+        2641: "form_gourgeist_small",
+        2642: "form_gourgeist_average",
+        2643: "form_gourgeist_large",
+        2644: "form_gourgeist_super",
+        2679: "form_oricorio_baile",
+        2680: "form_oricorio_pompom",
+        2681: "form_oricorio_pau",
+        2683: "form_oricorio_sensu",
+      }[form])
+      ? ""
+      : _forms$form;
+  }
+}
+export default IVsInventory;

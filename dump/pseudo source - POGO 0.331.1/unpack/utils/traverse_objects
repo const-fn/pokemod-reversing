@@ -1,0 +1,289 @@
+import _utils, { i, v, o } from "./utils_dir_file";
+export const __esModule = true;
+export { dumpChildsHierarchy };
+export { dumpFields };
+export { showGameObject };
+const _obfmap = _interopRequireDefault(require("../obfmap"));
+const _exception = _interopRequireDefault(require("./exception"));
+function _interopRequireDefault(obj) {
+  return obj && obj.__esModule ? obj : { default: obj };
+}
+/**
+* Pretty prints an object fields and their values.
+* If depth is specified does it recursively.
+* Useful to find shit to read. Skips useless fields too.
+*
+* @param {Wrapper} object      Instance from which to dump fields values from.
+* @param {Number}  [depth]     How many nested objects to recurse into. If -1 does it undefinitely.
+* @param {Array}   [blacklist] An array of strings. If the field value's class name includes any of
+* @param {Number}  [_i]        Not meant to be used.
+the strings, this member will be skipped. Useful for avoiding hangups.
+*/ function dumpFields(
+  object,
+  depth = 0,
+  blacklist = [],
+  _i = 2,
+  proto = false
+) {
+  if (!object.$fields) {
+    return _i == 2
+      ? _exception.default._log(color.red(`Not a valid object "${object}".`))
+      : _exception.default._log(
+          color.red(`${i(_i)}Not a valid object "${object}".`)
+        );
+  }
+  let max = 0;
+
+  object.$fields.forEach(function (field) {
+    if (
+      !field.fieldName.includes("FieldNumber") &&
+      !(
+        this &&
+        typeof this[field.fieldName] == "object" &&
+        v(`${this[field.fieldName]}`, blacklist)
+      )
+    ) {
+      max =
+        max < _obfmap.default.getUnObfuscated(field.fieldName).toString().length
+          ? _obfmap.default.getUnObfuscated(field.fieldName).toString().length
+          : max;
+    }
+  });
+
+  if (_i == 2) {
+    _exception.default._log(color.bold.blue(`[${o(object)}]`));
+  }
+
+  object.$fields.forEach(
+    function (field, index) {
+      if (
+        !field.fieldName.includes("FieldNumber") &&
+        (typeof this[field.fieldName] != "object" ||
+          !v(`${this[field.fieldName]}`, blacklist)) &&
+        (!proto || 0 != (index + 1) % 2)
+      ) {
+        if (
+          depth &&
+          this[field.fieldName] &&
+          typeof this[field.fieldName] == "object" &&
+          this[field.fieldName].$fields
+        ) {
+          _exception.default._log(
+            i(_i) +
+              _obfmap.default.getUnObfuscated(field.fieldName).padEnd(max + 2) +
+              ` = ${o(this[field.fieldName])}`,
+            "blue"
+          );
+
+          dumpFields(
+            this[field.fieldName],
+            -1 == depth ? -1 : depth - 1,
+            blacklist,
+            _i + 2
+          );
+        } else if (typeof this[field.fieldName] == "object") {
+          _exception.default._log(
+            i(_i) +
+              _obfmap.default.getUnObfuscated(field.fieldName).padEnd(max + 2) +
+              ` = ${o(this[field.fieldName])}`,
+            "blue"
+          );
+        } else {
+          _exception.default._log(
+            i(_i) +
+              _obfmap.default.getUnObfuscated(field.fieldName).padEnd(max + 2) +
+              ` = ${this[field.fieldName]}`,
+            "blue"
+          );
+        }
+      }
+    }.bind(object)
+  );
+}
+/**
+ * Prints the hierarchy of a transform's childrens with their names
+ *
+ * @param {Wrapper} transform  The parent transform
+ * @param {Number}  [_s]       Current recursion level (not to be used)
+ * @param {Number}  [_o]       Object to highlight for hookOnPointerClick() (not to be used)
+ * @param {Number}  [_t]       Extra left padding for hookOnPointerclick() (not to be used)
+ * @param {Wrapper} objectC    A Wrapper for UnityEngine.Object (Ditto.use("UnityEngine.Object"))
+ */ function dumpChildsHierarchy(
+  transform,
+  _s = 0,
+  _o = null,
+  _t = 0,
+  objectC
+) {
+  let _transform;
+  let _transform2;
+  let _transform2$base;
+  if (
+    null != (_transform = transform) &&
+    _transform.$has != null &&
+    _transform.$has("get_transform")
+  ) {
+    transform = transform.get_transform();
+  } else if (
+    null != (_transform2 = transform) &&
+    null != (_transform2$base = _transform2.base) &&
+    _transform2$base.$has("GetChildCount")
+  ) {
+    transform = transform.base;
+  } else if (!transform || !transform.$has("GetChildCount")) {
+    return;
+  }
+  let childCount;
+  try {
+    childCount = transform.GetChildCount();
+  } catch (e) {
+    return;
+  }
+  const indent = _t ? " ".repeat(4 * _t) : "";
+  if (_s == 0) {
+    let name = objectC.GetName == null || objectC.GetName(transform);
+    const go = transform.base.get_gameObject();
+    name = go.base.get_name();
+    const components = go.GetComponents(transform.base.typeof);
+    const componentNames = []; // UnityEngine.Component
+    components.forEach((c) => {
+      componentNames.push(c.$fullName);
+    });
+    let line = (_t == 0 ? "> " : `${indent}> `) + color.bold(name);
+
+    if (_o && transform.base.$instance.toString() == _o.$instance.toString()) {
+      line = color.bold.white(line.replace(/  /g, "---").replace(/  /g, "--"));
+    }
+
+    console.log(
+      color.bold[_utils.colorArray[_utils.colorArray.length - 1]](line) +
+        ` - [${color.gray(componentNames.join(", "))}]`
+    );
+
+    return void dumpChildsHierarchy(transform, _s + 1, _o, _t, objectC);
+  }
+  for (let i = 0; i < childCount; i++) {
+    let child;
+    let name;
+    let components;
+    child = transform.GetChild(i);
+
+    if (child.base.base.$has("get_gameObject")) {
+      const go = child.base.base.get_gameObject();
+      name = go.base.get_name();
+      components = go.GetComponents(transform.base.typeof);
+    } else {
+      name = child.base.base.get_name();
+    }
+
+    let cascade = color.red(":");
+    for (let i = 1; i < _s; i++) {
+      cascade +=
+        color[_utils.colorArray[(i - 1) % _utils.colorArray.length]]("   :");
+    }
+    let line = `${indent + cascade}   > ${color.bold(name)}`;
+
+    if (_o && child.base.base.$instance.toString() == _o.$instance.toString()) {
+      line = color.bold.white(line.replace(/   /g, "---").replace(/  /g, "--"));
+    }
+
+    if (components) {
+      const componentNames = [];
+
+      components.forEach((c) => {
+        componentNames.push(c.$fullName);
+      });
+
+      line += ` - [${color.gray(componentNames.join(", "))}]`;
+    }
+
+    console.log(
+      color[_utils.colorArray[(_s - 1) % _utils.colorArray.length]](line)
+    );
+
+    dumpChildsHierarchy(child.base, _s + 1, _o, _t, objectC);
+  }
+}
+function getNthParent(transform, nth) {
+  // // picks transform from RectTransforms for convenience
+  // // exits if nothing is
+  // if (transform.$className !== "Transform") {
+  //     transform = transform.base.$className == "Transform" ? transform.base : null
+  // }
+  for (let count = 0; transform; ) {
+    let _transform$get_parent;
+    if (nth == count) {
+      break;
+    }
+    count += 1;
+
+    if (
+      "Transform" !==
+      (null == (_transform$get_parent = transform.get_parent()) ||
+        _transform$get_parent.base.$className)
+    ) {
+      break;
+    } else {
+      let _transform$get_parent2;
+      transform =
+        null == (_transform$get_parent2 = transform.get_parent()) ||
+        _transform$get_parent2.base;
+    }
+  }
+  return transform;
+}
+function showGameObject(gameObject, objectC, printNthParentsHierarchy = 1) {
+  const transform = gameObject.get_transform().base;
+  let firstParentToPrintFullHierarchy;
+
+  if (-1 < printNthParentsHierarchy) {
+    firstParentToPrintFullHierarchy = getNthParent(
+      transform,
+      printNthParentsHierarchy
+    );
+  }
+
+  const parents = [];
+  let parent = transform;
+  for (parents.push(parent); parent; ) {
+    let _parent$get_parent;
+    let _parent;
+
+    parent =
+      null == (_parent$get_parent = parent.get_parent()) ||
+      _parent$get_parent.base;
+
+    if ("Transform" !== (null == (_parent = parent) || _parent.$className)) {
+      break;
+    }
+
+    parents.push(parent);
+  }
+  parents.reverse();
+  console.log("\n");
+  for (let i = 0; i < parents.length; i++) {
+    let _firstParentToPrintFu;
+    const parents_i = parents[i];
+    if (
+      (parents_i == null || parents_i.$instance.toString()) ==
+      (null == (_firstParentToPrintFu = firstParentToPrintFullHierarchy) ||
+        _firstParentToPrintFu.$instance.toString())
+    ) {
+      return void dumpChildsHierarchy(
+        parents_i,
+        undefined,
+        transform,
+        i,
+        objectC
+      );
+    } else {
+      const slug = `${" ".repeat(4 * i)}> `;
+      console.log(slug + objectC.GetName(parents_i));
+    }
+  } // if (printNthParentsHierarchy == 0) {
+  //     dumpChildsHierarchy(transform, undefined, transform, parents.length);
+  // } else {
+  //     const slug = " ".repeat(4 * parents.length) + `> `;
+  //     console.log(slug + objectC.GetName(transform));
+  // }
+}

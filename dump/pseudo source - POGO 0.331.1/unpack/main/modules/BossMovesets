@@ -1,0 +1,44 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const UserData_1 = __importDefault(require("../utils/UserData"));
+class BossMovesets extends ModuleBase_1.default {
+  init() {
+    super.init();
+    const MapGym = ditto_1.default.use("Niantic.Holoholo.Gym.MapGym");
+    MapGym.OnTap.attach({
+      onEnter() {
+        const i81n = this.i18n;
+
+        const gymData =
+          UserData_1.default.gameVersion == "0.305.1"
+            ? this._GymData_k__BackingField
+            : this.base._GymData_k__BackingField;
+
+        const gymData_raidInfo = gymData.raidInfo_;
+        if (gymData_raidInfo) {
+          const gymData_raidInfo_raidPokemon = gymData_raidInfo.raidPokemon_;
+          if (!gymData_raidInfo_raidPokemon) {
+            return;
+          }
+
+          const { move1_, move2_, pokemonId_ } = gymData_raidInfo_raidPokemon;
+
+          const fastMoveName = i81n.PokemonMoveName(move1_);
+          const chargeMoveName = i81n.PokemonMoveName(move2_);
+          const pokemonName = i81n.PokemonName(pokemonId_);
+          Java.send({
+            script: "get_raid_stats",
+            content: {
+              name: pokemonName,
+              fastMove: fastMoveName,
+              chargeMove: chargeMoveName,
+            },
+          });
+        }
+      },
+    });
+  }
+}
+export default BossMovesets;

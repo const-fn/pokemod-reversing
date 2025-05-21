@@ -1,0 +1,199 @@
+const English = {
+  common: {
+    ok: "OK",
+    cancel: "Cancel",
+    count: "Count",
+    confirm: "Confirm",
+    settings: "Settings",
+    add: "Add",
+    default: "Default",
+    alert: "Heads Up!",
+    ackWarning: "I Understand",
+  },
+  toast: {
+    restartYourGame: "Please restart your game.",
+    toc: {
+      transferred: "Transferred",
+      notTransferred: "Not Transferred",
+      disabldToc:
+        "Transfer On Catch was <color=#FF0000>disabled</color>, for this encounter",
+    },
+    incognitoMode: {
+      blankNameEnabled: "Blank name enabled",
+      blankNameDisabled: "Blank name disabled",
+    },
+    instantResult: {
+      catchError: "Error During Capture?",
+      catchSuccess: "Successful Capture!",
+      catchEscape: "Pok\xE9mon Escaped...",
+      catchFled: "Pok\xE9mon Fled! :(",
+      catchMissed: "Catch Missed?",
+      maybeShinyDitto: "It's a{maybeShiny} Ditto!",
+      xlCandy: "Got {obtainedXlCandy} XL",
+    },
+    skipIntro: {
+      ditto:
+        "A wild <b>Ditto</b> has appeared!\n<color=#FFD700>Could it be shiny?</color>",
+    },
+    packSpeed: {
+      cheatCode: "That's cheatcode #14, congrats",
+      spawnPokeStopPokemon: "Oh? Something is hiding here.",
+    },
+    instantGift: {
+      willAddSticker: "Stickers will be added to gifts if available.",
+      wontAddSticker: "Stickers will not be added to gifts.",
+      noStickerAvailable: "No stickers available",
+      sentWithSticker: "Sending gift with sticker",
+      bagFull: "Your bag is full",
+      dailyLimitReached: "You reached the daily limit!",
+      giftErr: "This gift does not exist!",
+      pcSuccess: "Pinned and removed postcard!",
+      pcAlreadyCreated: "A postcard of this location already exists.",
+      pcInvFull: "Postcard inventory is full.",
+      pcRateLimited: "Slow down! Server can't keep up with you.",
+      pcDailyLimit: "You've reached your postcard daily limit!",
+    },
+    instantGiftV2: {
+      noHaveGifts: "No gifts to send.",
+      noMoreGifts: "No gifts in inventory.",
+      openLimit: "You have reached the daily limit for gifts.",
+      bagFull: "Your bag is full!",
+      giftNotExist: "This gift does not exist.",
+    },
+    buddyInteractions: {
+      buddyCpTooHigh: "Your buddy's CP is too high for this league!",
+      totalBuddyHearts: "Total buddy hearts: {totalBuddyHearts}",
+    },
+    itemCleaner: { settingReset: "Setting reset" },
+    performanceMode: {
+      yesroads: "You'll now see roads, restart app to continue",
+      noroads: "You'll not see roads, restart app to continue",
+    },
+    teamRocket: { easterEgg: "Oh my gosh! You found easter egg #23." },
+    vpgp: {
+      enabled: "Pokeball Refill was <color=#008000>enabled</color>",
+      disabled: "Pokeball Refill was <color=#FF0000>disabled</color>",
+      reconnecting: "Reconnecting",
+    },
+    inventoryTweaks: {
+      applyAllNoItem: "There are no items or Pok\xE9mon to apply",
+    },
+  },
+  modals: {
+    inventoryTweaks: {
+      evolveTitle: "Confirm Evolution",
+      evolveBody: "You are about to Evolve {number} Pok\xE9mons",
+      purifyTitle: "Confirm Purification",
+      purifyBody: "You are about to Purify {number} Pok\xE9mons",
+    },
+    buddyInteractions: {
+      dontUseAny: "Don't use any",
+      forcedModalTitle: "Change berry",
+      forcedModalBody:
+        "Would you like to change your berry settings?{forcedText}",
+      prevItem: "Previously selected berry {berry}",
+      notEnoughBerryTitle: "Not enough berries",
+      notEnoughBerryBody:
+        "You don't have enough {razz}, {nanab}, {pinap}{fallbackItem} would you like to use another berry to feed to your buddy?",
+      totalHearts: "Total Hearts",
+      excitementPoints: "Excitement Points",
+    },
+    itemCleaner: {
+      currentSetting: "Current Setting",
+      gotIt: "Got it!",
+      clearSettings: "Clear Settings",
+      setupRecycleBtn: "Setup Auto-Recycle",
+      setMaxAmount: "Set the <b>maximum</b> amount",
+    },
+    removeBuddy: {
+      modalTitle: "Remove Buddy",
+      modalBody:
+        "Without a buddy Pok\xE9mon you will be able to see wild Zoruas in their original form.\nAre you sure you want to return your buddy to your bag?",
+    },
+    instantGiftV2: {
+      openGift_title: "Open gifts from {totalFriends} friend(s)?",
+      openGift_body:
+        "It won't be possible to open gifts if the daily limit for opened gifts has already been reached.",
+      openGift_button: "Open",
+      sendGift_title: "Do you want to send gifts to {totalFriends} friend(s)?",
+      sendGift_body:
+        "It won't be possible to send if there are no available gifts or if the friend has already received a gift today.",
+      sendGift_button: "Send",
+      sendGift_button_sticker: "Send with Sticker",
+      delFriend_title: "Do you want to remove {totalFriends} friend(s)?",
+      delFriend_body: "This action is irreversible",
+      delFriend_button: "Yes, remove",
+    },
+    teamRocket: {
+      rateLimited:
+        "Pokemod detected you're battling grunts faster than Niantic's limit of 60 grunts per hour. Continuing may trigger a \"BSOD\" and lock you out temporarily.\n\nProceed at your own risk!",
+    },
+  },
+  ui: {
+    pgpUtils: { pokeballRefillToggleName: "Pokeball Refill" },
+    advancedSettings: {
+      talkToMeWillow: "Talk to me Willow",
+      talkToMeWillowTip: "Enable to get Quest dialogs.",
+      addStickers: "Add Stickers",
+      preventMetadataLag: "Prevent Metadata Lag",
+      preventMetadataLagTip:
+        "Mitigates lag caused by location data of Pok\xE9mon, Gifts and Postcards.",
+      disableRoadsToggleName: "Disable Roads",
+      disableRoadsToggleTip:
+        "Roads and buildings will be removed from the map. <b>App restart is required</b>.",
+      skipMedalToggleName: "Skip Medal Popup",
+      skipMedalToggleTip: "Prevents Medal related popups.",
+      setCustomFpsTarget: "Set Custom Refresh Rate Target",
+      currentTarget: "Current Target",
+      enterCheatcodeButton: "Enter Cheatcode",
+      enterCheatcodeModal: "Enter the Cheatcode",
+      leekduckToggleDescriptionForDumbUsers:
+        "Replaces the Events tab with the Leekduck website",
+      poiShrinkName: "Performance Mode - POI Shrinking",
+      poiShrinkTip:
+        "Enables Gyms and Pok\xE9stops shrinking mechanics. <b>App restart is required</b>.",
+    },
+    inventoryTweaks: { applyAll: "Apply to all" },
+    autoQuests: {
+      autoRecycle: "AUTO-RECYCLE",
+      questRemoved: "Quest Removed",
+      rewardClaimed: "Quest Reward Claimed",
+      milestoneClaimed: "Milestone Reward Claimed",
+      tAutoClaim: "Quests - Auto Claim",
+      tAutoClaimTip: "Auto claims quest reward whenever it completed.",
+      tClaimPkmn: "Quests - Claim Pok\xE9mon",
+      tClaimPkmnTip:
+        "Also claims the Pok\xE9mon from a quest sending it to the Limbo.\n<b><color=#FFAA00>Warning: Limbo storage is limited to 99.</color></b>",
+      bResetRecycleList: "Quests - Clear Recycle List",
+      bResetRecycleListTip: "Clears all quests you selected to be recycled.",
+      bResetRecycleListSuccess: "Recycling list has been cleaned!",
+    },
+  },
+  cooldown: {
+    cooldown: "Cooldown",
+    time: { h: "h", m: "m", s: "s", ago: "ago" },
+    distance: { distance: "Distance", m: "m", km: "km" },
+    types: {
+      noRecords: "NO RECORDS",
+      unknown: "Unknown",
+      catch: "Catch Attempt",
+      manual: "Manual",
+      pokestop: "Pokestop",
+      healing: "Gym Healing",
+      battle: "Gym Battle",
+      defending: "Gym Allocation",
+      pgp: "Go Plus",
+    },
+    ui: {
+      manualSave: "MANUAL SAVE",
+      modalTitle: "Cooldown is over",
+      modalBody: "Maybe",
+      tBlockThrowsTitle: "Prevent Throws",
+      tBlockThrowsTip: "Prevent throws while on a cooldown.",
+      tRocketTpTitle: "Rocket Teleport",
+      tRocketTpTip:
+        "Teleport to previous location for Shadow encounters while on CD (10+ seconds).",
+    },
+  },
+};
+export default English;

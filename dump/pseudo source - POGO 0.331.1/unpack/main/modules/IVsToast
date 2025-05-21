@@ -1,0 +1,148 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const PokemonData_1 = __importDefault(require("../utils/PokemonData"));
+class IVsToast extends ModuleBase_1.default {
+  constructor() {
+    super();
+  }
+  init() {
+    super.init();
+    const self = this;
+
+    const EncounterState = ditto_1.default.use(
+      "Niantic.Holoholo.Encounter.EncounterState"
+    );
+
+    EncounterState.BeginEncounterApproach.attach({
+      onLeave() {
+        const mapPokemon = this.get_MapPokemon();
+        let pokemonProto;
+        let latLng = null;
+        let encounterId = "";
+        let spawnPointId = "";
+        let encounterType = "unknown";
+        if (mapPokemon.$className.includes("WildMapPokemon")) {
+          pokemonProto = mapPokemon.encounterProto.pokemon_.pokemon_;
+
+          latLng = {
+            Latitude: mapPokemon.encounterProto.pokemon_.latitude_,
+            Longitude: mapPokemon.encounterProto.pokemon_.longitude_,
+          };
+
+          encounterId = mapPokemon.encounterProto.pokemon_.encounterId_;
+          spawnPointId = mapPokemon.encounterProto.pokemon_.spawnPointId_;
+          encounterType = "wild";
+        } else if (
+          [
+            "TroyDiskMapPokemon",
+            "PowerUpPoiMapPokemon",
+            "TroyDiskMapPlacePokemon",
+            "PowerUpMapPlacePokemon",
+          ].includes(mapPokemon.$className)
+        ) {
+          pokemonProto = mapPokemon.encounterProto.pokemon_;
+          const location = mapPokemon.base.base.get_Location();
+
+          latLng = {
+            Latitude: location.Latitude,
+            Longitude: location.Longitude,
+          };
+
+          encounterId = mapPokemon.base.get_EncounterId();
+          spawnPointId = mapPokemon.base.get_SpawnPointId();
+        } else {
+          pokemonProto = mapPokemon.get_Pokemon();
+          let location = {};
+
+          if (mapPokemon.base.$has("get_Location")) {
+            location = mapPokemon.base.get_Location();
+          } else if (mapPokemon.base.base.$has("get_Location")) {
+            location = mapPokemon.base.base.get_Location();
+          } else {
+            location.Latitude = 0;
+            location.Longitude = 0;
+          }
+
+          latLng = {
+            Latitude: location.Latitude,
+            Longitude: location.Longitude,
+          };
+
+          encounterId = mapPokemon.get_EncounterId();
+          spawnPointId = mapPokemon.get_SpawnPointId();
+        }
+        switch (mapPokemon.$className) {
+          case "WildMapPokemon": {
+            encounterType = "wild";
+            break;
+          }
+          case "TroyDiskMapPokemon":
+          case "TroyDiskMapPlacePokemon": {
+            encounterType = "lure";
+            break;
+          }
+          case "PowerUpPoiMapPokemon":
+          case "PowerUpMapPlacePokemon": {
+            encounterType = "poweruppoi";
+            break;
+          }
+          case "IncenseMapPokemon": {
+            encounterType = "incense";
+            break;
+          }
+          case "IncidentMapPokemon": {
+            encounterType = "shadow";
+            break;
+          }
+          case "QuestMapPokemon": {
+            encounterType = "quest";
+            break;
+          }
+          case "RaidMapPokemon": {
+            encounterType = "raid";
+            break;
+          }
+          case "PhotobombingMapPokemon": {
+            encounterType = "photobomb";
+            break;
+          }
+          case "DailyEncounterMapPokemon": {
+            encounterType = "daily";
+            break;
+          }
+          case "ExtraMapPokemon": {
+            encounterType = "extra";
+            break;
+          }
+          case "StarterMapPokemon": {
+            encounterType = "starter";
+            break;
+          }
+          case "PoiMapPokemon":
+          case "MapPlacePokemon": {
+            encounterType = "pokestop";
+          }
+        }
+        const pokemonData = new PokemonData_1.default(
+          pokemonProto,
+          encounterId,
+          spawnPointId,
+          latLng,
+          encounterType
+        );
+
+        if (!self.isFakeIvDitto(pokemonProto, pokemonData.level)) {
+          Java.send({ script: "stats_toasts", content: pokemonData });
+        }
+      },
+    });
+  }
+  isFakeIvDitto(pokemonProto, level) {
+    return !(
+      pokemonProto.pokemonDisplay_.weatherBoostedCondition_ || !(level > 30)
+    );
+  }
+}
+export default IVsToast;

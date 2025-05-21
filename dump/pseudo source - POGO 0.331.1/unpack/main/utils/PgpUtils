@@ -1,0 +1,328 @@
+import { oneLineMedium } from "./Toast";
+import PogoUtils_1 from "./PogoUtils";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ObjectInstance_1 = __importDefault(require("./ObjectInstance"));
+const UserData_1 = __importDefault(require("./UserData"));
+const I18n_1 = __importDefault(require("./I18n"));
+const PersistentPrefs_1 = __importDefault(require("./PersistentPrefs"));
+const PGP_TOGGLE_ID = "pgpToggles";
+
+const setTogglePerPref = (currentUsername) =>
+  currentUsername == UserData_1.default.username
+    ? currentUsername
+    : (PersistentPrefs_1.default.has(
+        `${UserData_1.default.username}_pgpRefilToggleValue`
+      ) &&
+        (PogoUtils_1.PogoUtils.toggles.updateToggleValue(
+          PGP_TOGGLE_ID,
+          PersistentPrefs_1.default.get(
+            `${UserData_1.default.username}_pgpRefilToggleValue`,
+            false
+          )
+        ),
+        info(
+          `User changed, got new pgpRefilToggleValue: ${PogoUtils_1.PogoUtils.toggles.isToggled(
+            PGP_TOGGLE_ID
+          )}`
+        )),
+      UserData_1.default.username);
+
+ditto_1.default.onInitialize(() => {
+  if (UserData_1.default.tier == "user") {
+    return void info(
+      color.yellow(
+        `User tier is ${UserData_1.default.tier}, disabled PGP utils`
+      )
+    );
+  }
+
+  const pgpGuiControllerInstance = new ObjectInstance_1.default(
+    "Niantic.Holoholo.Pgp.PgpGuiController"
+  );
+
+  const pgpNotificationCenterInstance = new ObjectInstance_1.default(
+    "Niantic.Holoholo.Pgp.PgpNotificationCenter"
+  );
+
+  const pgpApiInstance = new ObjectInstance_1.default("PokemonGoPlus.PgpApi");
+  const itemBagInstance = new ObjectInstance_1.default("ItemBagImpl");
+  let shouldReconnect = false;
+  let pokestopsOnly = false;
+  let currentUsername = "";
+  PogoUtils_1.PogoUtils.toggles.addToggle({
+    id: PGP_TOGGLE_ID,
+    value: false,
+    name: "Pokeball Refill",
+    callback: ({ value }) => {
+      oneLineMedium(
+        I18n_1.default.getText(`toast.vpgp.${value ? "enabled" : "disabled"}`)
+      );
+
+      PersistentPrefs_1.default.set(
+        `${UserData_1.default.username}_pgpRefilToggleValue`,
+        value
+      );
+
+      info(
+        `Saved ${value} (${
+          value ? 1 : 0
+        }) for pgpRefilToggleValue to preferences`
+      );
+    },
+  });
+  const PgpService = ditto_1.default.use("Niantic.Holoholo.Pgp.PgpService");
+  PgpService.get_IsDisconnecting.attach({
+    onLeave(retval) {
+      if (retval) {
+        shouldReconnect = true;
+      } else if (shouldReconnect && !retval && this.device) {
+        setTimeout(() => {
+          shouldReconnect = false;
+
+          oneLineMedium(
+            `<color=#ffffff> ${String.fromCodePoint(
+              9889
+            )} ${I18n_1.default.getText(
+              "toast.vpgp.reconnecting"
+            )} vPGP�<b>z </b>... ${String.fromCodePoint(9889)} </color>`
+          );
+
+          this.StartSession(this.device, true);
+        }, 5000 /* 5e3 */);
+      }
+    },
+  });
+  const PgpActivityMonitor = ditto_1.default.use(
+    "Niantic.Holoholo.Pgp.PgpActivityMonitor"
+  );
+
+  PgpActivityMonitor.HandleTargetChanged.attach({
+    onLeave() {
+      pgpGuiControllerInstance.value.messageDisplayTime = 1;
+      pgpGuiControllerInstance.value.fadingTime = 0.5;
+      pgpNotificationCenterInstance.value = this.pgpNotificationCenter;
+      this.pokemonCatchNotificationDelay = 0;
+      this.pokestopCoolDownPeriodMs = 0;
+      currentUsername = setTogglePerPref(currentUsername);
+      const pokeballAmount = itemBagInstance.value.GetItemCount(1);
+
+      if (
+        PogoUtils_1.PogoUtils.toggles.isToggled(PGP_TOGGLE_ID) &&
+        pokeballAmount <= 10 &&
+        !pokestopsOnly &&
+        pgpApiInstance.value &&
+        pgpGuiControllerInstance.value
+      ) {
+        pgpGuiControllerInstance.value.messageDisplayTime = 55;
+        pgpGuiControllerInstance.value.fadingTime = 5;
+
+        pgpNotificationCenterInstance.value.Notify(
+          "Restocking Pok\xE9balls..."
+        );
+
+        pgpApiInstance.value.UpdateNotifications(2);
+        pokestopsOnly = true;
+
+        setTimeout(() => {
+          pgpGuiControllerInstance.value.messageDisplayTime = 1;
+          pgpGuiControllerInstance.value.fadingTime = 0.5;
+
+          pgpNotificationCenterInstance.value.Notify(
+            "Pokemon catching enabled..."
+          );
+
+          pgpApiInstance.value.UpdateNotifications(1);
+          pokestopsOnly = false;
+        }, 60000 /* 6e4 */);
+      }
+    },
+  });
+
+  ditto_1.default.use("PokemonGoPlus.PgpApi").get_Instance.probe(() => {
+    currentUsername = setTogglePerPref(currentUsername);
+  });
+
+  const objectC = ditto_1.default.use("UnityEngine.Object");
+  const Text = ditto_1.default.use("UnityEngine.UI.Text");
+  const Toggle = ditto_1.default.use("UnityEngine.UI.Toggle");
+  const UIToggleGraphics = ditto_1.default.use("UIToggleGraphics");
+
+  const PgpSettingsGuiController = ditto_1.default.use(
+    "Niantic.Holoholo.Pgp.PgpSettingsGuiController"
+  );
+
+  PgpSettingsGuiController.Initialize.attach({
+    onLeave() {
+      if (this.deviceKind != 0) {
+        return;
+      }
+      this.ToggleNotifications(false);
+
+      const pgpToggles =
+        PogoUtils_1.PogoUtils.toggles.getToggleFromId(PGP_TOGGLE_ID);
+
+      const notificationsContainerParent = this.notificationsContainer
+        .get_transform()
+        .base.get_parent().base;
+
+      const newWidgetGO = objectC.Instantiate(
+        this.notificationsContainer,
+        notificationsContainerParent,
+        true
+      );
+
+      const newWidgetTransform = newWidgetGO.get_transform().base;
+      const newWidgetElementsTransform = newWidgetTransform.GetChild(1).base;
+
+      const togglePokemonGO = newWidgetElementsTransform
+        .GetChild(1)
+        .base.base.get_gameObject();
+
+      const toggleSystemNotificationsGO = newWidgetElementsTransform
+        .GetChild(3)
+        .base.base.get_gameObject();
+
+      objectC.Destroy(togglePokemonGO);
+      objectC.Destroy(toggleSystemNotificationsGO);
+
+      const togglePokeStopTransform =
+        newWidgetElementsTransform.GetChild(2).base;
+
+      const toggleText = togglePokeStopTransform.base.GetComponentInChildren(
+        Text.typeof,
+        true
+      );
+
+      const newToggle = togglePokeStopTransform.base.GetComponentInChildren(
+        Toggle.typeof,
+        true
+      );
+
+      const toggleHoloText =
+        toggleText.$className == "I18nText" ? toggleText.base : toggleText;
+
+      toggleHoloText.textKey = "";
+
+      toggleHoloText.base.set_text(
+        I18n_1.default.getText("ui.pgpUtils.pokeballRefillToggleName")
+      );
+
+      const labelTransform = newWidgetTransform
+        .GetChild(0)
+        .base.GetChild(0).base;
+
+      const labelText = labelTransform.base.GetComponent(Text.typeof);
+
+      const labelHoloText =
+        toggleText.$className == "I18nText" ? labelText.base : labelText;
+
+      labelHoloText.textKey = "";
+      labelHoloText.base.set_text("VPGP\xB2\u207A");
+      const refilToggleUI = togglePokeStopTransform.base.GetComponent(
+        UIToggleGraphics.typeof
+      );
+      newToggle.onValueChanged = null;
+      newToggle.Set(pgpToggles.value, false);
+      newWidgetGO.set_active(true);
+
+      PogoUtils_1.PogoUtils.toggles.attachInstance({
+        id: PGP_TOGGLE_ID,
+        instance: newToggle.$instance.toString(),
+        toggleGraphics: refilToggleUI,
+      });
+    },
+  });
+  const WearablesSettingsGuiController = ditto_1.default.use(
+    "Niantic.Holoholo.Wearables.WearablesSettingsGuiController"
+  );
+  WearablesSettingsGuiController.Initialize.attach({
+    onLeave() {
+      const pgpToggles =
+        PogoUtils_1.PogoUtils.toggles.getToggleFromId(PGP_TOGGLE_ID);
+
+      const guiControllerRT = this.base.base.base.base.get_transform();
+
+      const viewportContentRT = guiControllerRT.base
+        .GetChild(0)
+        .base.GetChild(2)
+        .base.GetChild(0)
+        .base.GetChild(0);
+
+      const newWidgetGO = objectC.Instantiate(
+        this.notificationsSection,
+        viewportContentRT.base,
+        true
+      );
+
+      const newWidgetTransform = newWidgetGO.get_transform().base;
+      const newWidgetElementsTransform = newWidgetTransform.GetChild(1).base;
+
+      const togglePokemonGO = newWidgetElementsTransform
+        .GetChild(1)
+        .base.base.get_gameObject();
+
+      const toggleSystemNotificationsGO = newWidgetElementsTransform
+        .GetChild(3)
+        .base.base.get_gameObject();
+
+      objectC.Destroy(togglePokemonGO);
+      objectC.Destroy(toggleSystemNotificationsGO);
+
+      const togglePokeStopTransform =
+        newWidgetElementsTransform.GetChild(2).base;
+
+      const tipGO = togglePokeStopTransform
+        .GetChild(0)
+        .base.GetChild(1)
+        .base.base.get_gameObject();
+
+      objectC.Destroy(tipGO);
+
+      const toggleText = togglePokeStopTransform.base.GetComponentInChildren(
+        Text.typeof,
+        true
+      );
+
+      const newToggle = togglePokeStopTransform.base.GetComponentInChildren(
+        Toggle.typeof,
+        true
+      );
+
+      const toggleHoloText =
+        toggleText.$className == "I18nText" ? toggleText.base : toggleText;
+
+      toggleHoloText.textKey = "";
+
+      toggleHoloText.base.set_text(
+        I18n_1.default.getText("ui.pgpUtils.pokeballRefillToggleName")
+      );
+
+      const labelTransform = newWidgetTransform
+        .GetChild(0)
+        .base.GetChild(0).base;
+
+      const labelText = labelTransform.base.GetComponent(Text.typeof);
+
+      const labelHoloText =
+        toggleText.$className == "I18nText" ? labelText.base : labelText;
+
+      labelHoloText.textKey = "";
+      labelHoloText.base.set_text("VPGP\xB2\u207A");
+      const newToggleGO = togglePokeStopTransform.base.get_gameObject();
+      newToggle.onValueChanged = null;
+      newToggle.base.Set(pgpToggles.value, false);
+      newWidgetGO.set_active(true);
+      newToggleGO.set_active(true);
+      const refilToggleUI = togglePokeStopTransform.base.GetComponent(
+        UIToggleGraphics.typeof
+      );
+      PogoUtils_1.PogoUtils.toggles.attachInstance({
+        id: PGP_TOGGLE_ID,
+        instance: newToggle.base.$instance.toString(),
+        toggleGraphics: refilToggleUI,
+      });
+    },
+  });
+});

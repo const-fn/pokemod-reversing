@@ -1,0 +1,6 @@
+const _ditto = _interopRequireDefault(require("./ditto"));
+export const __esModule = true;
+export default _ditto.default;
+function _interopRequireDefault(obj) {
+  return obj && obj.__esModule ? obj : { default: obj };
+}

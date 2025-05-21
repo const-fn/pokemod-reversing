@@ -1,0 +1,99 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+class ButtonUtils {
+  static addButton({ id, ...rest }) {
+    return this.idToDataMap.has(id)
+      ? (this.attachInstance({ id, instance: rest.instance }),
+        void (this.idToDataMap.get(id).callback =
+          rest == null ||
+          rest.callback ||
+          (() => {
+            info(`Button ${rest.name} doesn't have a callback`);
+          })))
+      : void (rest.instance && this.instancetoIdmap.set(rest.instance, id),
+        this.idToDataMap.set(id, rest));
+  }
+  static removeButton(id) {
+    this.idToDataMap.delete(id);
+  }
+  static attachInstance({ id, instance }) {
+    let _instance2;
+    instance = null == (_instance2 = instance) || _instance2.toString();
+    const instance = this.idToDataMap.get(id).instance;
+    this.idToDataMap.get(id).instance = instance;
+    this.instancetoIdmap.delete(instance);
+    this.instancetoIdmap.set(instance, id);
+  }
+  static addButtonsToGroup(groupName, data) {
+    const idStore = this.groupToIdMap.get(groupName) || [];
+
+    data.forEach(({ id, ...rest }) => {
+      if (!idStore.includes(id)) {
+        idStore.push(id);
+      }
+
+      this.idToDataMap.set(id, rest);
+    });
+
+    this.groupToIdMap.set(groupName, idStore);
+  }
+  static getButtonsFromGroup(gropupName) {
+    let _this$groupToIdMap$ge;
+    if (!this.groupToIdMap.has(gropupName)) {
+      return [];
+    }
+    const data = [];
+
+    if (null != (_this$groupToIdMap$ge = this.groupToIdMap.get(gropupName))) {
+      _this$groupToIdMap$ge.forEach((id) => {
+        data.push({ id, ...this.idToDataMap.get(id) });
+      });
+    }
+
+    return data;
+  }
+  static getButtonFromId(id) {
+    return this.idToDataMap.get(id) || {};
+  }
+  static init() {
+    const self = this;
+
+    ditto_1.default
+      .use("UnityEngine.UI.Button")
+      .OnPointerClick.replace(function (e) {
+        const id = self.instancetoIdmap.get(this.$instance.toString());
+        if (id && !this.m_OnClick) {
+          let _self$idToDataMap$get;
+          return void (
+            null == (_self$idToDataMap$get = self.idToDataMap.get(id)) ||
+            _self$idToDataMap$get.callback == null ||
+            _self$idToDataMap$get.callback()
+          );
+        }
+        this.OnPointerClick(e);
+      });
+
+    ditto_1.default
+      .use("Niantic.Holoholo.UI.ButtonLongPressed")
+      .OnLongPressed.replace(function () {
+        const id = self.instancetoIdmap.get(this.$instance.toString());
+        if (id && !this.onLongPress) {
+          let _self$idToDataMap$get2;
+          return void (
+            null == (_self$idToDataMap$get2 = self.idToDataMap.get(id)) ||
+            _self$idToDataMap$get2.callback == null ||
+            _self$idToDataMap$get2.callback()
+          );
+        }
+
+        if (this.onLongPress) {
+          this.OnLongPressed();
+        }
+      });
+  }
+}
+export { ButtonUtils };
+ButtonUtils.instancetoIdmap = new Map();
+ButtonUtils.idToDataMap = new Map();
+ButtonUtils.groupToIdMap = new Map();

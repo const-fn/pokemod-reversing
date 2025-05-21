@@ -1,0 +1,394 @@
+export const __esModule = true;
+class Database {
+  _dbPath;
+  _enableSqlLogs = false;
+  _tableDataType = {};
+  _tableUniqueConstrainsts = {};
+  _db = null;
+  constructor(dbPath, migrations, enableLogs) {
+    this._dbPath = dbPath;
+    this._enableSqlLogs = enableLogs;
+    this._runMigration(migrations);
+  }
+  _closeDb() {
+    if (this._db) {
+      this._db.close();
+      this._db = null;
+    }
+  }
+  _openDb() {
+    if (!this._db) {
+      this._db = SqliteDatabase.open(this._dbPath);
+    }
+
+    return this._db;
+  }
+  insert(tableName, insertOptions) {
+    const statement = this._buildInsertStatement(tableName, insertOptions);
+    const db = this._openDb();
+    this._tryLogging(statement);
+    const query = db.prepare(statement);
+    const insertedData = query.step();
+    query.reset();
+    this._closeDb();
+    return this._shapeResult(tableName, insertedData);
+  }
+  insertMany(tableName, insertOptions) {
+    const statement = this._buildInsertManyStatement(tableName, insertOptions);
+    const db = this._openDb();
+    db.exec(statement);
+    this._closeDb();
+  }
+  findMany(tableName, findManyOptions) {
+    const select = findManyOptions == null || findManyOptions.columns || ["*"];
+
+    const where = findManyOptions == null || findManyOptions.where || {};
+
+    const statement = this._buildFindManyStatement(tableName, {
+      select,
+      where,
+      ...findManyOptions,
+    });
+
+    this._tryLogging(statement);
+    const db = this._openDb();
+    const query = db.prepare(statement);
+    const queryData = [];
+    for (let row; null !== (row = query.step()); ) {
+      queryData.push(this._shapeResult(tableName, row, select));
+    }
+    query.reset();
+    this._closeDb();
+    return queryData;
+  }
+  findFirst(tableName, findFirstOptions) {
+    const select = findFirstOptions == null || findFirstOptions.select || ["*"];
+
+    const where = findFirstOptions == null || findFirstOptions.where || {};
+
+    const statement = this._buildFindFirstStatement(tableName, {
+      select,
+      where,
+    });
+    this._tryLogging(statement);
+    const db = this._openDb();
+    const query = db.prepare(statement);
+    const queryData = query.step();
+    query.reset();
+    this._closeDb();
+    return this._shapeResult(tableName, queryData, select || []);
+  }
+  update(tableName, { update, where = {} }) {
+    const statement = this._buildUpdateStatement(tableName, { update, where });
+    this._tryLogging(statement);
+    const db = this._openDb();
+    const query = db.prepare(statement);
+    const updatedData = query.step();
+    query.reset();
+    this._closeDb();
+    return this._shapeResult(tableName, updatedData);
+  }
+  delete(tableName, where = {}) {
+    const statement = this._buildDeleteStatement(tableName, where);
+    this._tryLogging(statement);
+    const db = this._openDb();
+    db.exec(statement);
+    this._closeDb();
+  }
+  upsert(tablename, upsert) {
+    const statement = this._buildUpsertStatement(tablename, upsert);
+    this._tryLogging(statement);
+    const db = this._openDb();
+    db.exec(statement);
+    this._closeDb();
+  }
+  upsertMany(tablename, upserts) {
+    const statement = this._buildUpsertManyStatement(tablename, upserts);
+    this._tryLogging(statement);
+    const db = this._openDb();
+    db.exec(statement);
+    this._closeDb();
+  }
+  rawQuery(callback) {
+    const db = this._openDb();
+    callback(db);
+    this._closeDb();
+  }
+  _bindStatement(object = {}, slug) {
+    let statement = "";
+    for (const [key, value] of Object.entries(object)) {
+      if (statement) {
+        statement += slug;
+      }
+
+      statement +=
+        `${key}=` + (typeof value == "number" ? value : `'${value}'`);
+    }
+    return statement;
+  }
+  _shapeResult(tableName, result, returnColumns = []) {
+    if (!result) {
+      return null;
+    }
+    const ret = {};
+    if (
+      !returnColumns.length ||
+      (returnColumns.length === 1 && returnColumns[0] === "*")
+    ) {
+      for (let i = 0; i < result.length; i++) {
+        ret[this._tableDataType[tableName][i]] = result[i];
+      }
+    } else {
+      for (let i = 0; i < result.length; i++) {
+        ret[returnColumns[i]] = result[i];
+      }
+    }
+    return ret;
+  }
+  _tryLogging(statement) {
+    if (this._enableSqlLogs) {
+      const keyword = statement.split(" ")[0];
+
+      statement = `\n${color.bold.blue(
+        keyword.toUpperCase()
+      )}${statement.replace(keyword, "")}`;
+
+      console.log(color.green(statement));
+    }
+  }
+  _runMigration(migrations = []) {
+    const db = this._openDb();
+
+    db.exec(`create table if not exists
+                    ditto_migration
+                    (
+                        id integer primary key unique,
+                        name text unique,
+                        type text
+                    );`);
+
+    this._closeDb();
+    this._tableDataType.ditto_migration = ["id", "name", "type"];
+    const migrationNames = this.findMany("ditto_migration").map((m) => m.name);
+    migrations.forEach(({ name, type, models }) => {
+      if (migrationNames.includes(name)) {
+        console.log(
+          color.bold.green(
+            `Already ran migration ${color.cyan(name)} of type ${color.blue(
+              type
+            )}`
+          )
+        );
+
+        models.forEach(({ tableName, columns, uniques }) => {
+          this._tableDataType[tableName] = columns.map(
+            ({ columnName, isUnique = false }) => {
+              if (isUnique) {
+                this._tableUniqueConstrainsts[tableName] = [columnName];
+              }
+
+              return columnName;
+            }
+          );
+
+          if (uniques && uniques.length) {
+            this._tableUniqueConstrainsts[tableName] = uniques;
+          }
+        });
+      } else {
+        this._tryCreateOrAtlterTable(name, type, models);
+      }
+    });
+  }
+  _tryCreateOrAtlterTable(name, type, models) {
+    return type.toLowerCase() == "create"
+      ? void this._tryCreateTable(name, type, models)
+      : void this._tryAlterTable(name, type, models);
+  }
+  _tryCreateTable(name, type, models) {
+    const db = this._openDb();
+
+    models.forEach(({ tableName, columns, uniques }) => {
+      const statement = this._buildCreateTableStatement(
+        tableName,
+        columns,
+        uniques
+      );
+      db.exec(statement);
+    });
+
+    this.insert("ditto_migration", { name, type });
+  }
+  _tryAlterTable(name, type, models) {
+    const db = this._openDb();
+
+    models.forEach(({ tableName, columns, uniques }) => {
+      const statement = this._buildAlterTableStatement(
+        tableName,
+        columns,
+        uniques
+      );
+      db.exec(statement);
+    });
+
+    this.insert("ditto_migration", { name, type });
+  }
+  /*
+   * Query builders
+   */ _buildInsertStatement(tableName, insertOptions) {
+    let columns = "";
+    let data = "";
+    for (const [key, value] of Object.entries(insertOptions)) {
+      if (columns && data) {
+        columns += ", ";
+        data += ", ";
+      }
+
+      columns += key;
+      data += typeof value == "number" ? value : `'${value}'`;
+    }
+    const statement = `insert into ${tableName} (${columns}) values (${data}) returning * ;`;
+    return statement;
+  }
+  _buildInsertManyStatement(tableName, insertOptions) {
+    let statement = "BEGIN TRANSACTION;";
+
+    insertOptions.forEach((option) => {
+      statement += this._buildInsertStatement(tableName, option);
+    });
+
+    statement += "COMMIT;";
+    return statement;
+  }
+  _buildFindManyStatement(tableName, { select, where, ...rest }) {
+    let statement = `select ${select.toString()} from ${tableName}`;
+    const order = rest.order
+      ? ` order by ${rest.order.column.toString()} ${
+          rest.order.type ? rest.order.type : ""
+        }`
+      : ""; // const isSelectAll =
+
+    if (Object.entries(where).length) {
+      statement += ` where ${this._bindStatement(where, " and ")}`;
+    }
+
+    statement += `${order} ;`;
+    return statement;
+  }
+  _buildFindFirstStatement(tableName, { select, where }) {
+    const statement = `select ${select.toString()} from ${tableName} where ${this._bindStatement(
+      where,
+      " and "
+    )};`;
+    return statement;
+  }
+  _buildUpdateStatement(tableName, { update, where = {} }) {
+    let statement = `update ${tableName} set `;
+
+    statement += `${this._bindStatement(
+      update,
+      ", "
+    )} where ${this._bindStatement(where, " and ")}`;
+
+    statement += " returning * ;";
+    return statement;
+  }
+  _buildDeleteStatement(tableName, where = {}) {
+    const statement = `${
+      `delete from ${tableName} where ` + this._bindStatement(where, " and ")
+    } ;`;
+    return statement;
+  }
+  _buildUpsertStatement(tableName, upsert) {
+    let statement =
+      this._buildInsertStatement(tableName, upsert).replace(
+        "returning * ;",
+        ""
+      ) +
+      ` on conflict(${this._tableUniqueConstrainsts[
+        tableName
+      ].toString()}) do update set `;
+
+    let excluded = "";
+
+    Object.keys(upsert).forEach((key) => {
+      if (!this._tableUniqueConstrainsts[tableName].includes(key)) {
+        excluded += excluded ? ", " : "";
+        excluded += `${key}=excluded.${key}`;
+      }
+    });
+
+    statement += excluded;
+    return statement;
+  }
+  _buildUpsertManyStatement(tableName, upsertOptions) {
+    let statement = "BEGIN TRANSACTION;";
+
+    upsertOptions.forEach((option) => {
+      statement += `${this._buildUpsertStatement(tableName, option)} ;`;
+    });
+
+    statement += "COMMIT;";
+    return statement;
+  }
+  _buildCreateTableStatement(tableName, columns, uniques) {
+    let sqlStr = "";
+    this._tableDataType[tableName] = [];
+
+    columns.forEach(
+      (
+        {
+          defaultValue,
+          isPrimary,
+          columnName,
+          notNullable,
+          dataType,
+          isUnique,
+        },
+        index
+      ) => {
+        this._tableDataType[tableName].push(columnName);
+
+        if (index !== 0) {
+          sqlStr += ",";
+        }
+
+        sqlStr += `${columnName} ${dataType}${isPrimary ? " PRIMARY KEY" : ""}${
+          defaultValue == null ? "" : ` DEFAULT ${defaultValue}`
+        }${notNullable ? " NOT NULL" : ""}${isUnique ? " UNIQUE" : ""}`;
+      }
+    );
+
+    if (uniques && uniques.length) {
+      this._tableUniqueConstrainsts[tableName] = uniques;
+
+      sqlStr += `, constraint ${uniques
+        .toString()
+        .replace(",", "_")} unique (${uniques.toString()})`;
+    }
+
+    const statement = `create table if not exists ${tableName}(${sqlStr});`;
+    this._tryLogging(statement);
+    return statement;
+  }
+  _buildAlterTableStatement(tableName, columns, uniques) {
+    const statement = `
+          PRAGMA foreign_keys=off;
+
+          BEGIN TRANSACTION;
+
+          ALTER TABLE ${tableName} RENAME TO old_${tableName};
+
+          ${this._buildCreateTableStatement(tableName, columns, uniques)}
+
+          INSERT INTO ${tableName} SELECT * FROM old_${tableName};
+
+          COMMIT;
+
+          PRAGMA foreign_keys=on;
+         `;
+    this._tryLogging(statement);
+    return statement;
+  }
+}
+export { Database };

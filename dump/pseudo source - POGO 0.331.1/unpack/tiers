@@ -1,0 +1,107 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const UserData_1 = __importDefault(require("./main/utils/UserData"));
+const BlockNonShiny_1 = __importDefault(
+  require("./main/modules/BlockNonShiny")
+);
+const BossMovesets_1 = __importDefault(require("./main/modules/BossMovesets"));
+
+const CooldownTracker_1 = __importDefault(
+  require("./main/modules/CooldownTracker")
+);
+
+const Eggspresso_1 = __importDefault(require("./main/modules/Eggspresso"));
+const FirstAidKit_1 = __importDefault(require("./main/modules/FirstAidKit"));
+const Headshot_1 = __importDefault(require("./main/modules/Headshot"));
+const IncognitoMode_1 = __importDefault(
+  require("./main/modules/IncognitoMode")
+);
+const InstantCatch_1 = __importDefault(require("./main/modules/InstantCatch"));
+const InstantLoading_1 = __importDefault(
+  require("./main/modules/InstantLoading")
+);
+const InstantSpin_1 = __importDefault(require("./main/modules/InstantSpin"));
+
+const InventoryTweaks_1 = __importDefault(
+  require("./main/modules/InventoryTweaks")
+);
+
+const IVsInventory_1 = __importDefault(require("./main/modules/IVsInventory"));
+const IVsNameplate_1 = __importDefault(require("./main/modules/IVsNameplate"));
+const IVsToast_1 = __importDefault(require("./main/modules/IVsToast"));
+const MagicBag_1 = __importDefault(require("./main/modules/MagicBag"));
+const MassGift_1 = __importDefault(require("./main/modules/MassGift"));
+const PerfectedThrow_1 = __importDefault(
+  require("./main/modules/PerfectedThrow")
+);
+
+const PerformanceMode_1 = __importDefault(
+  require("./main/modules/PerformanceMode")
+);
+
+const PinapMaster_1 = __importDefault(require("./main/modules/PinapMaster"));
+const PVPMetrics_1 = __importDefault(require("./main/modules/PVPMetrics"));
+const QuestTweaks_1 = __importDefault(require("./main/modules/QuestTweaks"));
+const RaidPack_1 = __importDefault(require("./main/modules/RaidPack"));
+const ShinyScanner_1 = __importDefault(require("./main/modules/ShinyScanner"));
+
+const SkipEncounterIntro_1 = __importDefault(
+  require("./main/modules/SkipEncounterIntro")
+);
+
+const SpawnBooster_1 = __importDefault(require("./main/modules/SpawnBooster"));
+const Tamagotchi_1 = __importDefault(require("./main/modules/Tamagotchi"));
+const TapToTeleport_1 = __importDefault(
+  require("./main/modules/TapToTeleport")
+);
+
+const TeamLeadersDamage_1 = __importDefault(
+  require("./main/modules/TeamLeadersDamage")
+);
+
+const TeamRocket_1 = __importDefault(require("./main/modules/TeamRocket"));
+
+const TransferOnCatch_1 = __importDefault(
+  require("./main/modules/TransferOnCatch")
+);
+
+ditto_1.default.sendExceptionRequests(
+  "https://faults.pokemod.dev/api/v2/events",
+  "08ZMP5si493EL7TxDFAhyVRgXOugUjzbIfX14GGk"
+);
+
+UserData_1.default.tier = "explorer";
+
+UserData_1.default.availableModules = [
+  MagicBag_1.default,
+  PinapMaster_1.default,
+  InstantCatch_1.default,
+  PerfectedThrow_1.default,
+  SkipEncounterIntro_1.default,
+  InventoryTweaks_1.default,
+  IVsInventory_1.default,
+  BlockNonShiny_1.default,
+  SpawnBooster_1.default,
+  ShinyScanner_1.default,
+  InstantSpin_1.default,
+  RaidPack_1.default,
+  FirstAidKit_1.default,
+  MassGift_1.default,
+  Tamagotchi_1.default,
+  TransferOnCatch_1.default,
+  IVsNameplate_1.default,
+  BossMovesets_1.default,
+  IVsToast_1.default,
+  TapToTeleport_1.default,
+  TeamLeadersDamage_1.default,
+  TeamRocket_1.default,
+  IncognitoMode_1.default,
+  PerformanceMode_1.default,
+  QuestTweaks_1.default,
+  Eggspresso_1.default,
+  Headshot_1.default,
+  PVPMetrics_1.default,
+  InstantLoading_1.default,
+  CooldownTracker_1.default,
+];

@@ -1,0 +1,279 @@
+import {
+  RewardItem,
+  RewardItemStardust,
+  RewardItemMegaResource,
+  oneLineBig,
+} from "../utils/Toast";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const UserData_1 = __importDefault(require("../utils/UserData"));
+class RaidPack extends ModuleBase_1.default {
+  constructor() {
+    super();
+    this.battleservice = undefined;
+    this.raidBossPokemonProto = undefined;
+    this.cacheMovesTypes = {};
+    this.enemyBattlePokemonReplace = undefined;
+    this._EnemyBattlePokemon = undefined;
+  }
+  init() {
+    super.init();
+    this.logger = createLogger("RaidPack");
+
+    this._EnemyBattlePokemon = ditto_1.default.use(
+      "Niantic.Holoholo.Battle.EnemyBattlePokemon"
+    );
+
+    const self = this;
+    const UnityObject = ditto_1.default.use("UnityEngine.Object");
+
+    const ApproachCameraControllerAnimatecamera = ditto_1.default.use(
+      "Niantic.Holoholo.Gym.Approach.ApproachCameraController/<AnimateCamera>d__12"
+    );
+
+    ApproachCameraControllerAnimatecamera.MoveNext.attach({
+      onLeave() {
+        this["<t>5__7"] = 1;
+      },
+    });
+    const GymRootController = ditto_1.default.use(
+      "Niantic.Holoholo.Gym.GymRootController"
+    );
+    GymRootController.get_PlayerHasSeenRaidIntroSequence.attach({
+      onLeave() {
+        return true;
+      },
+    });
+    const RaidResolveUIController = ditto_1.default.use(
+      "Niantic.Holoholo.Raid.RaidResolveUIController"
+    );
+    RaidResolveUIController.Init.attach({
+      onEnter(args) {
+        let playerNo = -1;
+        const battleResultsProto = args[0]._BattleResults_k__BackingField;
+        if (!battleResultsProto) {
+          return void self.logger.warn(color.yellow("No Battle Results..."));
+        }
+        const battleResultsProto_attackers = battleResultsProto.attackers_;
+        for (let i = 0; i < battleResultsProto_attackers.count; i++) {
+          if (
+            battleResultsProto_attackers.array[i].trainerPublicProfile_.name_ ==
+            UserData_1.default.username
+          ) {
+            playerNo = i;
+            break;
+          }
+        }
+
+        self.logger.info(
+          color.gray(
+            `current player: ${UserData_1.default.username}, player number: ${playerNo}`
+          )
+        );
+
+        if (
+          !(
+            -1 == playerNo ||
+            playerNo > battleResultsProto.raidItemRewards_.count - 1
+          )
+        ) {
+          const loot =
+            battleResultsProto.raidItemRewards_.array[playerNo].lootItem_;
+          for (let item, i = 0; i < loot.count; i++) {
+            item = loot.array[i];
+
+            switch (item.typeCase_) {
+              case 1: {
+                RewardItem(item.type_.m_value, item.count_);
+                break;
+              }
+              case 2: {
+                RewardItemStardust(item.count_);
+                break;
+              }
+              case 10: {
+                RewardItemMegaResource(item.type_.m_value, item.count_);
+              }
+            }
+          }
+        }
+      },
+      onLeave() {
+        this.CloseLeaderboard();
+        this.Close();
+        const guiGO = this.base.base.base.base.base.get_gameObject();
+        UnityObject.Destroy(guiGO);
+      },
+    });
+    const RaidLeaderboardCardWidget = ditto_1.default.use(
+      "Niantic.Holoholo.Raid.RaidLeaderboardCardWidget"
+    );
+    RaidLeaderboardCardWidget.Initialize.replace((data) => {
+      if (data.PlayerName == UserData_1.default.username) {
+        oneLineBig(`${data.title}`);
+      }
+    });
+    const RaidBattleState = ditto_1.default.use(
+      "Niantic.Holoholo.Raid.RaidBattleState"
+    );
+
+    RaidBattleState.StartRaidBattleMaybe.attach({
+      onLeave() {
+        self.logger.debug("RaidBattleState.StartRaidBattleMaybe");
+        self.onStartRaidBattle(this);
+      },
+    });
+
+    RaidBattleState.ExitState.attach({
+      onLeave() {
+        self.onEndRaidBattle();
+      },
+    });
+
+    const RaidBattleVNextState = ditto_1.default.use(
+      "Niantic.Holoholo.VNext.RaidBattleVNextState"
+    );
+
+    RaidBattleVNextState.StartRaidBattleMaybe.attach({
+      onLeave() {
+        self.logger.debug("RaidBattleVNextState.StartRaidBattleMaybe");
+        this.raidBattleAnimationSequencer.bossIntroZoomSpeed = 1000 /* 1e3 */;
+        this.raidBattleAnimationSequencer.bossRoarZoomDelay = 0;
+        this.raidBattleAnimationSequencer.bossFaceHoldTime = 0;
+        this.raidBattleAnimationSequencer.shrinkSequenceSpeed = 1000 /* 1e3 */;
+      },
+    });
+
+    RaidBattleVNextState.ExitState.attach({
+      onLeave() {
+        self.onEndRaidBattle();
+      },
+    });
+
+    const RaidState = ditto_1.default.use("RaidState");
+    RaidState.EnterState.attach({
+      onLeave() {
+        this.exitTimerWidgetFadeDuration = 0.1;
+        this.exitScreenFadeDuration = 0.1;
+        this.victoryTransitionTime = 0.1;
+        this.victoryIntroDelay = 0.1;
+      },
+    });
+  }
+  onStartRaidBattle(state) {
+    const self = this;
+    state.bossIntroZoomSpeed = 1000 /* 1e3 */;
+    state.bossRoarZoomDelay = 0;
+    state.bossFaceHoldTime = 0;
+    state.shrinkSequenceSpeed = 1000 /* 1e3 */;
+    this.battleservice = state.base.battleFrameObservableService;
+    this.logger.info(`Got battle service instance ${this.battleservice}`);
+
+    if (!this.enemyBattlePokemonReplace) {
+      this.enemyBattlePokemonReplace =
+        this._EnemyBattlePokemon.ObserveBattleFrame.replace(function (frame) {
+          this.ObserveBattleFrame(frame);
+
+          if (!!self.battleservice) {
+            if (this.base.currentFrameAction) {
+              const frameAction = this.base.currentFrameAction;
+
+              if (frameAction.Type && [1, 2].includes(frameAction.Type)) {
+                self.battleservice.TryDodge();
+              }
+            } else {
+              const playerPokemonProto = this.base
+                .get_Opponent()
+                .base.get_PokemonProto();
+              let use_move3 = false;
+              if (playerPokemonProto.move3_) {
+                let _self$raidBossPokemon;
+                const raidBossPokemonProto =
+                  null == (_self$raidBossPokemon = self.raidBossPokemonProto)
+                    ? this.base.get_PokemonProto()
+                    : _self$raidBossPokemon;
+                if (raidBossPokemonProto) {
+                  const raidBossPokemonProto_cachedSettingsProto =
+                    raidBossPokemonProto.cachedSettingsProto;
+                  if (raidBossPokemonProto_cachedSettingsProto) {
+                    let _self$cacheMovesTypes;
+                    let _self$cacheMovesTypes2;
+
+                    const move2_type =
+                      null ==
+                      (_self$cacheMovesTypes =
+                        self.cacheMovesTypes[playerPokemonProto.move2_])
+                        ? this.base.gameMasterData.Get_PokemonMove(
+                            playerPokemonProto.move2_
+                          ).type_
+                        : _self$cacheMovesTypes;
+
+                    const move3_type =
+                      null ==
+                      (_self$cacheMovesTypes2 =
+                        self.cacheMovesTypes[playerPokemonProto.move3_])
+                        ? this.base.gameMasterData.Get_PokemonMove(
+                            playerPokemonProto.move3_
+                          ).type_
+                        : _self$cacheMovesTypes2;
+
+                    use_move3 =
+                      this.base.gameMasterData.Get_TypeEffectiveness(
+                        move2_type,
+                        raidBossPokemonProto_cachedSettingsProto == null ||
+                          raidBossPokemonProto_cachedSettingsProto.type1_,
+                        raidBossPokemonProto_cachedSettingsProto == null ||
+                          raidBossPokemonProto_cachedSettingsProto.type2_
+                      ) <
+                      this.base.gameMasterData.Get_TypeEffectiveness(
+                        move3_type,
+                        raidBossPokemonProto_cachedSettingsProto == null ||
+                          raidBossPokemonProto_cachedSettingsProto.type1_,
+                        raidBossPokemonProto_cachedSettingsProto == null ||
+                          raidBossPokemonProto_cachedSettingsProto.type2_
+                      );
+
+                    self.logger.info(
+                      color.green(
+                        `MovesType: ${move2_type}, ${move3_type}, use_move3: ${use_move3}`
+                      )
+                    );
+
+                    self.logger.info(
+                      color.green(
+                        `BossTypes: ${
+                          raidBossPokemonProto_cachedSettingsProto == null ||
+                          raidBossPokemonProto_cachedSettingsProto.type1_
+                        } and ${
+                          raidBossPokemonProto_cachedSettingsProto == null ||
+                          raidBossPokemonProto_cachedSettingsProto.type2_
+                        }`
+                      )
+                    );
+                  }
+                }
+              }
+              self.battleservice.TryOrQueueAttack();
+              self.battleservice.TryOrQueueSpecialAttack(use_move3);
+            }
+          }
+        });
+
+      this.logger.info(color.gray("Attached to BattlePokemon"));
+    }
+  }
+  onEndRaidBattle() {
+    this.battleservice = null;
+    this.raidBossPokemonProto = null;
+
+    if (this.enemyBattlePokemonReplace) {
+      Interceptor.revert(this.enemyBattlePokemonReplace);
+      this.logger.info(color.gray("Reverted BattlePokemon"));
+    }
+
+    this.enemyBattlePokemonReplace = null;
+  }
+}
+export default RaidPack;

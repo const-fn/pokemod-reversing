@@ -1,0 +1,89 @@
+import ModuleBase_1 from "../utils/ModuleBase";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+class TeamLeadersDamage extends ModuleBase_1.CombatModule {
+  constructor() {
+    super();
+    this._CombatQuestPokemonProto = undefined;
+    this.opponent = undefined;
+  }
+  init() {
+    super.init();
+
+    this._CombatQuestPokemonProto = ditto_1.default.use(
+      "CombatQuestPokemonProto"
+    );
+
+    const self = this;
+    const NpcCombatResolveState = ditto_1.default.use("NpcCombatResolveState");
+    NpcCombatResolveState.EnterState.attach({
+      onEnter(args) {
+        const completionData = args[1].CombatCompletionData.base;
+        completionData.EndState = 6;
+        completionData.FinishState = 0;
+      },
+      onLeave() {
+        this.DismissAndComplete();
+      },
+    });
+    const CombatDirectorV2 = ditto_1.default.use(
+      "Niantic.Holoholo.Combat.CombatDirectorV2"
+    );
+    CombatDirectorV2.Initialize.attach({
+      onLeave() {
+        if (this.combatType_ == 1) {
+          this.combatProto_.combatState_ = 6;
+          self.opponent = this.combatProto_.opponent_;
+        }
+      },
+    });
+    const CombatResultsRpcService = ditto_1.default.use(
+      "CombatResultsRpcService"
+    );
+    CombatResultsRpcService.BuildNpcRewardsProto.replace(function (
+      npcCombatRewardsData
+    ) {
+      let _retval$combatQuestUp;
+      let _self$opponent;
+      let _self$opponent$reserv;
+      npcCombatRewardsData.FinishState = 0;
+      const retval = this.BuildNpcRewardsProto(npcCombatRewardsData);
+
+      if (
+        0 ==
+        (null == (_retval$combatQuestUp = retval.combatQuestUpdate_) ||
+          _retval$combatQuestUp.superEffectiveChargedAttacksUpdate_)
+      ) {
+        retval.combatQuestUpdate_.superEffectiveChargedAttacksUpdate_ =
+          Math.floor(4 * Math.random());
+      }
+
+      if (
+        null != (_self$opponent = self.opponent) &&
+        null != (_self$opponent$reserv = _self$opponent.reservePokemon_) &&
+        _self$opponent$reserv.array
+      ) {
+        const firstMon = self._CombatQuestPokemonProto.$new();
+        firstMon.pokemonId_ = self.opponent.activePokemon_.pokemonId_;
+        firstMon.pokedexId_ = self.opponent.activePokemon_.pokedexId_;
+        retval.combatQuestUpdate_.faintedOpponentPokemon_.Add(firstMon);
+
+        self.opponent.reservePokemon_.array.forEach((combatPokemonProto) => {
+          if (combatPokemonProto) {
+            const reservedMon = self._CombatQuestPokemonProto.$new();
+            reservedMon.pokemonId_ = combatPokemonProto.pokemonId_;
+            reservedMon.pokedexId_ = combatPokemonProto.pokedexId_;
+
+            retval.combatQuestUpdate_.faintedOpponentPokemon_.Add(reservedMon);
+          }
+        });
+
+        self.opponent = undefined;
+      }
+
+      return retval;
+    });
+  }
+}
+export default TeamLeadersDamage;

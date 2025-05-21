@@ -1,0 +1,181 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ObjectInstance_1 = __importDefault(require("./ObjectInstance"));
+const translations_1 = __importDefault(require("./translations"));
+class UnityI18nProvider {
+  get locale() {
+    if (!this._locale) {
+      this._locale = this.getLanguage();
+    }
+
+    return this._locale;
+  }
+  set locale(l) {
+    this._locale = l;
+  }
+  get instance() {
+    let _this$_instance;
+    return null == (_this$_instance = this._instance) || _this$_instance.value;
+  }
+  set instance(i) {
+    this._instance = i;
+  }
+  setLocale(lang) {
+    this.locale = lang;
+    this[lang] = {};
+  }
+  get localeMap() {
+    if (!this[this.locale]) {
+      this[this.locale] = {};
+    }
+
+    return this[this.locale];
+  }
+  getLanguage() {
+    const lang = this.instance.get_Language();
+    return typeof lang == "string" ? lang : lang.Language;
+  }
+  getText(key) {
+    if (!this.localeMap[key]) {
+      this.localeMap[key] = this.instance.Text(key);
+    }
+
+    return this.localeMap[key];
+  }
+  getItemNameFromId(id_) {
+    const key = `i_name${id_}`;
+
+    if (!this.localeMap[key]) {
+      this.localeMap[key] = this.instance.ItemName(id_);
+    }
+
+    return this.localeMap[key];
+  }
+  getPokemonNameFromId(id_) {
+    const key = `p_name${id_}`;
+
+    if (!this.localeMap[key]) {
+      this.localeMap[key] = this.instance.PokemonName(id_);
+    }
+
+    return this.localeMap[key];
+  }
+  getMoveNameFromId(id_) {
+    const key = `m_name${id_}`;
+
+    if (!this.localeMap[key]) {
+      this.localeMap[key] = this.instance.PokemonMoveName(id_);
+    }
+
+    return this.localeMap[key];
+  }
+  getItemDescFromId(id_) {
+    const key = `i_desc${id_}`;
+
+    if (!this.localeMap[key]) {
+      this.localeMap[key] = this.instance.ItemDesc(id_);
+    }
+
+    return this.localeMap[key];
+  }
+}
+class I18nProvider {
+  constructor() {
+    this.unity = new UnityI18nProvider();
+    this.fallbackLocale = "English";
+  }
+  get locale() {
+    if (!this._locale) {
+      this._locale = this.unity.getLanguage();
+    }
+
+    return this._locale;
+  }
+  set locale(l) {
+    this._locale = l;
+  }
+  onLanguageChange() {
+    this.locale = undefined;
+    this.unity.locale = undefined;
+  }
+  addLocale(lang, obj) {
+    this[lang] = this.transform(obj);
+    return this;
+  }
+  setFallbackLang(lang) {
+    this.fallbackLocale = lang;
+  }
+  get tfLocaleMap() {
+    if (!this[this.locale]) {
+      this[this.locale] = {};
+    }
+
+    return this[this.locale];
+  }
+  get fallbackLocaleMap() {
+    return this[this.fallbackLocale];
+  }
+  transform(obj) {
+    const tf = {};
+
+    const _transform = (obj, keys = []) =>
+      typeof obj == "object"
+        ? void Object.keys(obj).forEach((k) => {
+            _transform(obj[k], [...keys, k]);
+          })
+        : void (tf[keys.join(".")] = obj);
+
+    _transform(obj);
+    return tf;
+  }
+  extractVal(key) {
+    const data = this.tfLocaleMap[key];
+    return data
+      ? data
+      : this.locale === this.fallbackLocale || this.fallbackLocaleMap[key];
+  }
+  withArgs(text, args) {
+    const key = `${text}::${JSON.stringify(args)}`;
+
+    if (!this.tfLocaleMap[key]) {
+      this.tfLocaleMap[key] = Object.keys(args).reduce(
+        (cur, key) => cur == null || cur.replace(`{${key}}`, args[key]),
+        text
+      );
+    }
+
+    return this.tfLocaleMap[key];
+  }
+  fromFunc(text, args = undefined) {
+    const key = `${text}::${JSON.stringify(args)}`;
+
+    if (!this.tfLocaleMap[key]) {
+      this.tfLocaleMap[key] = text(args);
+    }
+
+    return this.tfLocaleMap[key];
+  }
+  getText(key, args = undefined) {
+    let _text;
+    let text = this.extractVal(key);
+    return typeof text == "function"
+      ? this.fromFunc(text, args)
+      : (text && args && (text = this.withArgs(text, args)),
+        null == (_text = text) ? key : _text);
+  }
+}
+const I18n = new I18nProvider();
+
+ditto_1.default.onInitialize(() => {
+  I18n.unity.instance = new ObjectInstance_1.default(
+    "Niantic.Holoholo.Internationalization.I18n",
+    "SetUpRemoteLanguageTable"
+  );
+});
+
+Object.keys(translations_1.default).forEach((k) => {
+  I18n.addLocale(k, translations_1.default[k]);
+});
+
+export default I18n;

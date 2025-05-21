@@ -1,0 +1,64 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+function sendTelemetry(eventName, content = {}) {
+  Java.send({ script: "telemetry", name: `${eventName}`, content });
+}
+export { sendTelemetry };
+const languages = [
+  "Afrikaans",
+  "Arabic",
+  "Basque",
+  "Belarusian",
+  "Bulgarian",
+  "Catalan",
+  "Chinese",
+  "Czech",
+  "Danish",
+  "Dutch",
+  "English",
+  "Estonian",
+  "Faroese",
+  "Finnish",
+  "French",
+  "German",
+  "Greek",
+  "Hebrew",
+  "Icelandic",
+  "Indonesian",
+  "Italian",
+  "Japanese",
+  "Korean",
+  "Latvian",
+  "Lithuanian",
+  "Norwegian",
+  "Polish",
+  "Portuguese",
+  "Romanian",
+  "Russian",
+  "SerboCroatian",
+  "Slovak",
+  "Slovenian",
+  "Spanish",
+  "Swedish",
+  "Thai",
+  "Turkish",
+  "Ukrainian",
+  "Vietnamese",
+  "ChineseSimplified",
+  "ChineseTraditional",
+  "Unknown",
+  "Hungarian",
+];
+function bootTelemetry() {
+  const application = ditto_1.default.use("UnityEngine.Application");
+
+  sendTelemetry("application_version", {
+    value: application.get_version().toString(),
+  });
+
+  sendTelemetry("application_architecture", {
+    value: Process.arch.toString(),
+  });
+}
+export { bootTelemetry };

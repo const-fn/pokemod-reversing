@@ -1,0 +1,202 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+class Unity {
+  static init_() {
+    info(color.gray(`Initializing UnityUtils...`));
+    this.callbacks_ = new Map();
+    this.Application = ditto_1.default.use("UnityEngine.Application");
+    this.Object = ditto_1.default.use("UnityEngine.Object");
+    this.Component = ditto_1.default.use("UnityEngine.Component");
+    this.GameObject = ditto_1.default.use("UnityEngine.GameObject");
+    this.Transform = ditto_1.default.use("UnityEngine.Transform");
+    this.RectTransform = ditto_1.default.use("UnityEngine.RectTransform");
+    this.Vector2 = ditto_1.default.use("UnityEngine.Vector2");
+    this.Vector3 = ditto_1.default.use("UnityEngine.Vector3");
+    this.Color = ditto_1.default.use("UnityEngine.Color");
+
+    this.ImageConversion = ditto_1.default.use("UnityEngine.ImageConversion");
+
+    this.Rect = ditto_1.default.use("UnityEngine.Rect");
+    this.Sprite = ditto_1.default.use("UnityEngine.Sprite");
+    this.Texture2D = ditto_1.default.use("UnityEngine.Texture2D");
+    this.Time = ditto_1.default.use("UnityEngine.Time");
+
+    this.UnityAction = ditto_1.default.use("UnityEngine.Events.UnityAction");
+
+    this.UnityActionGeneric = ditto_1.default.use(
+      "UnityEngine.Events.UnityAction`1"
+    );
+
+    this.UnityActionGeneric2 = ditto_1.default.use(
+      "UnityEngine.Events.UnityAction`2"
+    );
+
+    this.UI.Button = ditto_1.default.use("UnityEngine.UI.Button");
+    this.UI.Toggle = ditto_1.default.use("UnityEngine.UI.Toggle");
+    this.UI.Image = ditto_1.default.use("UnityEngine.UI.Image");
+    this.UI.RawImage = ditto_1.default.use("UnityEngine.UI.RawImage");
+    this.UI.Text = ditto_1.default.use("UnityEngine.UI.Text");
+
+    this.UI.ButtonClickedEvent = ditto_1.default.use(
+      "UnityEngine.UI.Button/ButtonClickedEvent"
+    );
+
+    this.UI.ToggleEvent = ditto_1.default.use(
+      "UnityEngine.UI.Toggle/ToggleEvent"
+    );
+
+    this.System.IntPtr = ditto_1.default.use("System.IntPtr");
+
+    this.System.Marshal = ditto_1.default.use(
+      "System.Runtime.InteropServices.Marshal"
+    );
+
+    this.System.Action = ditto_1.default.use("System.Action");
+    this.System.ActionGeneric = ditto_1.default.use("System.Action`1");
+    this.System.ActionGeneric2 = ditto_1.default.use("System.Action`2");
+    this.System.Boolean = ditto_1.default.use("System.Boolean");
+    this.System.String = ditto_1.default.use("System.String");
+    this.System.Convert = ditto_1.default.use("System.Convert");
+    this.System.NullableGeneric = ditto_1.default.use("System.Nullable`1");
+    info(color.green(`Initialized UnityUtils.`));
+  }
+  static makeButtonClickedEvent(id, callback) {
+    const event = this.UI.ButtonClickedEvent.$new();
+    const action = this.makeAction(
+      id,
+      "UnityEngine.Events.UnityAction",
+      callback
+    );
+    event.base.AddListener(action);
+    return event;
+  }
+  static makeToggleEvent(id, callback) {
+    const event = this.UI.ToggleEvent.$new();
+
+    const action = this.makeGenericAction(
+      id,
+      "UnityEngine.Events.UnityAction`1",
+      "System.Boolean",
+      callback
+    );
+
+    event.base.AddListener(action);
+    return event;
+  }
+  static makeAction(id, actionClass, callback, dispose = false) {
+    const nc = new NativeCallback(
+      () => {
+        callback();
+
+        if (dispose) {
+          this.callbacks_.delete(id);
+        }
+      },
+      "void",
+      ["pointer", "pointer"]
+    );
+    this.callbacks_.set(id, nc);
+    let tp;
+
+    tp =
+      actionClass === "System.Action"
+        ? this.System.Action.typeof
+        : actionClass === "UnityEngine.Events.UnityAction"
+        ? this.UnityAction.typeof
+        : ditto_1.default.use(actionClass).typeof;
+
+    return this.System.Marshal.GetDelegateForFunctionPointer(nc, tp);
+  }
+  static makeGenericAction(
+    id,
+    actionClass,
+    typeClass,
+    callback,
+    classInstance = undefined,
+    dispose = false
+  ) {
+    let actionType =
+      actionClass === "System.Action`1"
+        ? this.System.ActionGeneric.typeof
+        : actionClass === "UnityEngine.Events.UnityAction`1"
+        ? this.UnityActionGeneric.typeof
+        : ditto_1.default.use(actionClass).typeof;
+    const specificType = ditto_1.default.use(typeClass);
+    const specificActionType = actionType.MakeGenericType([
+      specificType.typeof,
+    ]);
+
+    const specificActionClass = ditto_1.default.Core.createObject(
+      ditto_1.default.Il2cppApi.class_from_system_type(
+        specificActionType.$instance
+      )
+    );
+
+    const specificActionKlass = ditto_1.default.wrap(specificActionClass);
+    let nc;
+
+    nc =
+      typeClass == "System.Boolean"
+        ? new NativeCallback(
+            (method_code, value) => {
+              callback(value == 1);
+            },
+            "void",
+            ["pointer", "pointer", "pointer"]
+          )
+        : new NativeCallback(
+            (method_code, value) => {
+              const classInst =
+                method_code == 0 || ditto_1.default.wrap(method_code);
+              callback(ditto_1.default.wrap(value), classInst);
+
+              if (dispose) {
+                this.callbacks_.delete(id);
+              }
+            },
+            "void",
+            ["pointer", "pointer", "pointer"]
+          );
+
+    this.callbacks_.set(id, nc);
+    const delegateInstance = specificActionKlass.$new(Unity.Object.$new(), nc);
+    delegateInstance.base.base.method_ptr = delegateInstance.base.base.method;
+    delegateInstance.base.base.invoke_impl = delegateInstance.base.base.method;
+    delegateInstance.base.base.delegate_trampoline = null;
+
+    delegateInstance.base.base.method_code = classInstance
+      ? classInstance
+      : null;
+
+    delegateInstance.base.base.m_target = null;
+    return delegateInstance;
+  }
+  static makeGenericNullable(type, value = undefined) {
+    const generic = this.System.NullableGeneric.typeof.MakeGenericType([
+      ditto_1.default.use(type).typeof,
+    ]);
+
+    const obj = ditto_1.default.Core.createObject(
+      ditto_1.default.Il2cppApi.class_from_system_type(generic.$instance)
+    );
+
+    const wrap = ditto_1.default.wrap(obj);
+
+    if (value !== undefined) {
+      wrap.value = value;
+    }
+
+    return wrap;
+  }
+  static toIntPtr(pointer) {
+    return this.System.IntPtr.$new(int64(pointer));
+  }
+}
+export default Unity;
+Unity.UI = {};
+Unity.System = {};
+
+ditto_1.default.onInitialize(() => {
+  Unity.init_();
+});

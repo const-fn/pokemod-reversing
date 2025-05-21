@@ -1,0 +1,35 @@
+export const __esModule = true;
+export { compare };
+export { gte };
+export { lte };
+function compare(v1, v2, complete) {
+  v1 += "";
+  v2 += "";
+
+  if (v1 === v2) {
+    return 0;
+  }
+
+  const v1s = v1.split(".");
+  const v2s = v2.split(".");
+  const len = Math[complete ? "max" : "min"](v1s.length, v2s.length);
+  for (let i = 0; i < len; i++) {
+    v1s[i] = typeof v1s[i] == "undefined" ? 0 : parseInt(v1s[i], 10);
+    v2s[i] = typeof v2s[i] == "undefined" ? 0 : parseInt(v2s[i], 10);
+
+    if (v1s[i] > v2s[i]) {
+      return 1;
+    }
+
+    if (v1s[i] < v2s[i]) {
+      return -1;
+    }
+  }
+  return 0;
+}
+function gte(v1, v2) {
+  return compare(v1, v2, true) >= 0;
+}
+function lte(v1, v2) {
+  return compare(v1, v2, true) <= 0;
+}

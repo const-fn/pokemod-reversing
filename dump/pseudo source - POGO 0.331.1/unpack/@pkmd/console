@@ -1,0 +1,94 @@
+(function (global) {
+  (() => {
+    const _core = require("./core");
+    /* eslint-disable prefer-rest-params */ const engine = global;
+
+    if (!global.myConsoleInit) {
+      Object.defineProperties(engine, {
+        // console: {
+        //     enumerable: true,
+        //     get() {
+        //         return new CustomLogger();
+        //     },
+        // },
+        warn: {
+          enumerable: true,
+          value() {
+            (0, _core.warn)(...arguments);
+          },
+        },
+        debug: {
+          enumerable: true,
+          value() {
+            (0, _core.debug)(...arguments);
+          },
+        },
+        error: {
+          enumerable: true,
+          value() {
+            (0, _core.error)(...arguments);
+          },
+        },
+        info: {
+          enumerable: true,
+          value() {
+            (0, _core.info)(...arguments);
+          },
+        },
+        log: {
+          enumerable: true,
+          get() {
+            return (0, _core.createColordProperty)(_core.log);
+          },
+        },
+        unsafe: {
+          enumerable: true,
+          value() {
+            (0, _core.unsafe)(...arguments);
+          },
+        },
+        color: {
+          enumerable: true,
+          get() {
+            return (0, _core.createColordProperty)(_core.cstring);
+          },
+        },
+        setConsoleFlags: {
+          value(val) {
+            const {
+              threads = _core.Config.threads,
+              logLevel = _core.Config.logLevel,
+              logToAndroid = _core.Config.logToAndroid,
+              encryptLogs = _core.Config.encryptLogs,
+            } = val;
+            _core.Config.threads = threads;
+            _core.Config.logLevel = logLevel;
+            _core.Config.logToAndroid = logToAndroid;
+            _core.Config.encryptLogs = encryptLogs;
+          },
+        },
+        myConsoleInit: { value: true },
+      });
+    }
+
+    if (!global.createLogger) {
+      global.createLogger = (tag, flags) =>
+        typeof flags == "string"
+          ? new _core.CustomLogger(tag, flags)
+          : new _core.CustomLogger(
+              tag,
+              flags == null || flags.logLevel,
+              flags == null || flags.randomColor
+            );
+    }
+  }).call(this);
+}).call(
+  this,
+  typeof global !== "undefined"
+    ? global
+    : typeof self !== "undefined"
+    ? self
+    : typeof window !== "undefined"
+    ? window
+    : {}
+);

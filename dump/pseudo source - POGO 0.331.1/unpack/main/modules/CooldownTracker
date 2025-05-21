@@ -1,0 +1,1023 @@
+import { oneLineMedium } from "../utils/Toast";
+import PogoUtils_1 from "../utils/PogoUtils";
+import { getIcon } from "../utils/CooldownIcon";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const UserData_1 = __importDefault(require("../utils/UserData"));
+const I18n_1 = __importDefault(require("../utils/I18n"));
+const SharedUtils_1 = __importDefault(require("../../bot/Utils/SharedUtils"));
+const PersistentPrefs_1 = __importDefault(require("../utils/PersistentPrefs"));
+const UnityUtils_1 = __importDefault(require("../utils/UnityUtils"));
+const T_ENCOUNTER = 0;
+const T_MANUAL = 1;
+const T_POI = 2;
+const T_BERRY = 3;
+const T_BATTLE = 4;
+const T_DEFENDER = 5;
+const T_PGP = 6;
+class CooldownTracker extends ModuleBase_1.default {
+  constructor() {
+    super();
+    this.lat = 0;
+    this.lon = 0;
+    this.currentUsername = "";
+    this.ignoreCd = false;
+    this.menuOpen = false;
+    this.remoteGym = false;
+    this.toggles = { preventThrows: true, rocketTp: true };
+    this.cdData = { lat: 0, lon: 0, ts: 0, trigger: -1, id: undefined };
+    this.previousData = [];
+    this._Color = undefined;
+    this._Object = undefined;
+    this._Text = undefined;
+    this._Image = undefined;
+    this._Button = undefined;
+    this.closeMenu = undefined;
+    this.dismissedCallback = undefined;
+    this.openCompletedCallback = undefined;
+    this.pokemonProto = undefined;
+    this.poiTitleText = undefined;
+
+    this.mainCdButton = {
+      id: "cd_tp_main",
+      text: undefined,
+      button: undefined,
+      go: undefined,
+    };
+
+    this.addCdButton3 = {
+      id: "cd_tp_3",
+      text: undefined,
+      button: undefined,
+      go: undefined,
+    };
+
+    this.addCdButton2 = {
+      id: "cd_tp_2",
+      text: undefined,
+      button: undefined,
+      go: undefined,
+    };
+
+    this.addCdButton1 = {
+      id: "cd_tp_1",
+      text: undefined,
+      button: undefined,
+      go: undefined,
+    };
+
+    this.addCdButton0 = {
+      id: "cd_tp_0",
+      text: undefined,
+      button: undefined,
+      go: undefined,
+    };
+
+    this.mainMenuButton = { RectTransform: null, Button: null };
+    this.lastInventoryUpdateTs = 0;
+    this.fullPokeballCanvasGroup = undefined;
+    this.tempFullPokeballCanvasGroup = undefined;
+    this.indicatorObjectUpdateTask = undefined;
+    this.notificationTask = undefined;
+    this.rocketTempLat = 0;
+    this.rocketTempLon = 0;
+  }
+  init() {
+    super.init();
+    this._Color = ditto_1.default.use("UnityEngine.Color");
+    this._Object = ditto_1.default.use("UnityEngine.Object");
+    this._Text = ditto_1.default.use("UnityEngine.UI.Text");
+    this._Image = ditto_1.default.use("UnityEngine.UI.Image");
+    this._Button = ditto_1.default.use("UnityEngine.UI.Button");
+    const self = this;
+
+    const DeviceManager_c = ditto_1.default.use(
+      "Niantic.Platform.Ditto.Device.DeviceManager/<>c__DisplayClass5_0"
+    );
+
+    DeviceManager_c["<NotifyLocationUpdate>b__0"].attach({
+      onLeave() {
+        self.lat = this.location.data.LatitudeDeg;
+        self.lon = this.location.data.LongitudeDeg;
+
+        if (self.cdData.ts == 0) {
+          self.checkPlayer();
+        } else if (self.menuOpen) {
+          self.setupButton(self.cdData, self.mainCdButton);
+
+          for (let i in self.previousData) {
+            if (i > 3) {
+              break;
+            }
+            self.setupButton(self.previousData[i], self[`addCdButton${i}`]);
+          }
+        } else {
+          self.updatePokeballIndicator();
+        }
+      },
+    });
+    const PokestopSpinnerInteractionGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.Pokestop.PokestopSpinnerInteractionGuiController"
+    );
+    PokestopSpinnerInteractionGuiController.Initialize.attach({
+      onLeave() {
+        self.poiTitleText = this.titleText;
+      },
+    });
+    const GymApproachGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.Gym.Approach.GymApproachGuiController"
+    );
+    GymApproachGuiController.Init.attach({
+      onLeave() {
+        self.poiTitleText = this.gymNameText;
+      },
+    });
+    const MapExploreState = ditto_1.default.use(
+      "Niantic.Holoholo.Map.MapExploreState"
+    );
+    MapExploreState.GymSelected.attach({
+      onEnter(args) {
+        self.remoteGym = args[1];
+      },
+    });
+    const EncounterState = ditto_1.default.use(
+      "Niantic.Holoholo.Encounter.EncounterState"
+    );
+
+    EncounterState.ApproachComplete.attach({
+      onLeave() {
+        self.fullPokeballCanvasGroup = undefined;
+
+        if (self.notificationTask) {
+          clearTimeout(self.notificationTask);
+          self.notificationTask = undefined;
+        }
+
+        const mapPokemon = this.get_MapPokemon();
+        if (
+          [
+            "QuestMapPokemon",
+            "DailyEncounterMapPokemon",
+            "PokestopSpawnPokemon",
+            "PhotobombingMapPokemon",
+          ].some((type) => mapPokemon.$className == type)
+        ) {
+          self.ignoreCd = true;
+
+          return void info(
+            color.gray(
+              `[CD] ${mapPokemon.$className
+                .replace("Pokemon", "")
+                .replace("Map", "")} encounter, will ignore CD`
+            )
+          );
+        }
+        self.ignoreCd = false;
+
+        if (mapPokemon.$has("encounterProto")) {
+          if (mapPokemon.encounterProto.pokemon_.$className == "PokemonProto") {
+            self.pokemonProto = mapPokemon.encounterProto.pokemon_;
+          } else if (mapPokemon.encounterProto.pokemon_.$has("pokemon_")) {
+            self.pokemonProto = mapPokemon.encounterProto.pokemon_.pokemon_;
+          }
+        }
+
+        if (!self.pokemonProto) {
+          mapPokemon.$has("get_Pokemon") &&
+            (self.pokemonProto = mapPokemon.get_Pokemon());
+
+          !self.pokemonProto &&
+            error(
+              color.red(
+                `[CD] no pokemon proto in the ${mapPokemon.$className} class`
+              )
+            );
+        }
+
+        if (!self.pokemonProto.pokemonId_) {
+          error(color.red(`[CD] ${mapPokemon.$className} has no Pokemon ID.`));
+        }
+
+        if (self.notificationTask) {
+          clearTimeout(self.notificationTask);
+          self.notificationTask = undefined;
+        }
+
+        if (
+          mapPokemon.$className == "IncidentMapPokemon" &&
+          self.toggles.rocketTp &&
+          self.cdData.ts > 0 &&
+          !self.ignoreCd
+        ) {
+          const cd = self.calcCooldown(false);
+
+          if (cd >= 10) {
+            self.rocketTempLat = self.lat;
+            self.rocketTempLon = self.lon;
+            self.teleport(self.cdData.lat, self.cdData.lon);
+          }
+        } else {
+          const cd = self.calcCooldown();
+
+          if (cd >= 30000 /* 3e4 */) {
+            self.notificationTask = setTimeout(() => {
+              PogoUtils_1.PogoUtils.Update(() => {
+                self.notificationTask = undefined;
+
+                PogoUtils_1.PogoUtils.showWarningModal(
+                  I18n_1.default.getText("cooldown.ui.modalTitle"),
+                  I18n_1.default.getText("cooldown.ui.modalBody"),
+                  [
+                    {
+                      name: I18n_1.default.getText("common.ok"),
+                      eventType: 1,
+                    },
+                  ]
+                );
+              });
+            }, cd + 500);
+          }
+        }
+      },
+    });
+
+    EncounterState.ExitState.attach({
+      onLeave() {
+        self.pokemonProto = undefined;
+        self.ignoreCd = false;
+
+        if (self.notificationTask) {
+          clearTimeout(self.notificationTask);
+          self.notificationTask = undefined;
+        }
+
+        if (self.toggles.rocketTp && self.rocketTempLat != 0) {
+          self.teleport(self.rocketTempLat, self.rocketTempLon);
+          self.rocketTempLat = 0;
+          self.rocketTempLon = 0;
+        }
+      },
+    });
+
+    const CatchPokemonOutProto = ditto_1.default.use("CatchPokemonOutProto");
+    CatchPokemonOutProto[
+      "pb::Niantic.Protobuf.IBufferMessage.InternalMergeFrom"
+    ].attach({
+      onLeave() {
+        if (self.notificationTask) {
+          clearTimeout(self.notificationTask);
+          self.notificationTask = undefined;
+        }
+
+        if (self.ignoreCd) {
+          return;
+        }
+
+        if (this.status_ != 1 && !this.scores_) {
+          return void info(
+            `[CD] Catch failed (status ${this.status_}) and scores is null, probably on a cooldown`
+          );
+        }
+        let pokeID;
+
+        if (self.pokemonProto) {
+          pokeID = self.pokemonProto.pokemonId_;
+        }
+
+        self.saveCooldown(T_ENCOUNTER, pokeID);
+
+        if (
+          this.status_ == 0 ||
+          this.status_ == 1 ||
+          this.status_ == 1 ||
+          this.status_ == 3
+        ) {
+          self.pokemonProto = undefined;
+        }
+
+        if (self.toggles.rocketTp && self.rocketTempLat != 0) {
+          self.teleport(self.rocketTempLat, self.rocketTempLon);
+          self.rocketTempLat = 0;
+          self.rocketTempLon = 0;
+        }
+      },
+    });
+    const FortSearchOutProto = ditto_1.default.use("FortSearchOutProto");
+    FortSearchOutProto[
+      "pb::Niantic.Protobuf.IBufferMessage.InternalMergeFrom"
+    ].attach({
+      onLeave() {
+        if (this.result_ == 1 && !this.xpAwarded_) {
+          return void info(
+            color.yellow(
+              `[CD] FortSearch result is Success but no XP awarded, probably on a cooldown...`
+            )
+          );
+        }
+        if (this.result_ == 2) {
+          return void info(
+            color.yellow(
+              `[CD] Got Out of Range for FortSearch, will not save a cooldown...`
+            )
+          );
+        }
+        let poiTitle;
+
+        if (self.poiTitleText) {
+          poiTitle = self.poiTitleText.m_Text;
+        }
+
+        self.saveCooldown(T_POI, poiTitle);
+      },
+    });
+    const GymDeployOutProto = ditto_1.default.use("GymDeployOutProto");
+    GymDeployOutProto[
+      "pb::Niantic.Protobuf.IBufferMessage.InternalMergeFrom"
+    ].attach({
+      onEnter() {
+        let poiTitle;
+
+        if (self.poiTitleText) {
+          poiTitle = self.poiTitleText.m_Text;
+        }
+
+        self.saveCooldown(T_DEFENDER, poiTitle);
+      },
+    });
+    const GymFeedPokemonOutProto = ditto_1.default.use(
+      "GymFeedPokemonOutProto"
+    );
+    GymFeedPokemonOutProto[
+      "pb::Niantic.Protobuf.IBufferMessage.InternalMergeFrom"
+    ].attach({
+      onEnter() {
+        if (self.remoteGym) {
+          return void info("[CD] Remote Feeding, not saving the CD");
+        }
+        let poiTitle;
+
+        if (self.poiTitleText) {
+          poiTitle = self.poiTitleText.m_Text;
+        }
+
+        self.saveCooldown(T_BERRY, poiTitle);
+      },
+    });
+    const GymStartSessionOutProto = ditto_1.default.use(
+      "GymStartSessionOutProto"
+    );
+    GymStartSessionOutProto[
+      "pb::Niantic.Protobuf.IBufferMessage.InternalMergeFrom"
+    ].attach({
+      onEnter() {
+        let poiTitle;
+
+        if (self.poiTitleText) {
+          poiTitle = self.poiTitleText.m_Text;
+        }
+
+        self.saveCooldown(T_BATTLE, poiTitle);
+      },
+    });
+    const GymBattleAttackOutProto = ditto_1.default.use(
+      "GymBattleAttackOutProto"
+    );
+    GymBattleAttackOutProto[
+      "pb::Niantic.Protobuf.IBufferMessage.InternalMergeFrom"
+    ].attach({
+      onEnter() {
+        let poiTitle;
+
+        if (self.poiTitleText) {
+          poiTitle = self.poiTitleText.m_Text;
+        }
+
+        self.saveCooldown(T_BATTLE, poiTitle);
+      },
+    });
+    const PgpActivityMonitorDisplayClass = ditto_1.default.use(
+      "Niantic.Holoholo.Pgp.PgpActivityMonitor/<>c__DisplayClass22_0"
+    );
+    PgpActivityMonitorDisplayClass["<HandleActionLog>b__1"].attach({
+      onEnter(args) {
+        this.actionLogEntry = args[0];
+      },
+      onLeave() {
+        if (this.actionLogEntry.sfida_) {
+          self.saveCooldown(T_PGP);
+        }
+      },
+    });
+    const Pokeball = ditto_1.default.use("Niantic.Holoholo.Encounter.Pokeball");
+    Pokeball.Drag.attach({
+      onEnter() {
+        if (!self.ignoreCd && self.toggles.preventThrows) {
+          if (self.calcCooldown() > 0) {
+            this.EndDrag();
+          }
+        }
+      },
+    });
+    const MainMenuGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.Map.UI.MainMenuGuiController"
+    );
+
+    MainMenuGuiController.onInventoryUpdate.attach({
+      onEnter() {
+        self.fullPokeballCanvasGroup = undefined;
+      },
+      onLeave() {
+        self.tempFullPokeballCanvasGroup = this.fullPokeballCanvasGroup;
+        this.lastInventoryUpdateTs = Date.now();
+        self.updateIndicatorObject();
+      },
+    });
+
+    PogoUtils_1.PogoUtils.addButtonToMainMenu(
+      "cdt_btn",
+      "cooldown.cooldown",
+      () => this.openMenu(),
+      (image) => {
+        image.set_overrideSprite(getIcon());
+      }
+    );
+
+    PogoUtils_1.PogoUtils.toggles.addToggleToGroup("advanced_settings", {
+      id: "advanced_preventThrows",
+      name: "cooldown.ui.tBlockThrowsTitle",
+      value: this.toggles.preventThrows,
+      description: "cooldown.ui.tBlockThrowsTip",
+      callback: (toggle) => {
+        this.toggles.preventThrows = toggle.value;
+
+        PersistentPrefs_1.default.set(
+          `${this.currentUsername}_toggles`,
+          this.toggles,
+          `${this.currentUsername}_CDT`
+        );
+
+        info(`[CD] Set Prevent Throws to ${this.toggles.preventThrows}`);
+      },
+    });
+
+    PogoUtils_1.PogoUtils.toggles.addToggleToGroup("advanced_settings", {
+      id: "advanced_autoRocketTp",
+      name: "cooldown.ui.tRocketTpTitle",
+      value: this.toggles.rocketTp,
+      description: "cooldown.ui.tRocketTpTip",
+      callback: (toggle) => {
+        this.toggles.rocketTp = toggle.value;
+
+        PersistentPrefs_1.default.set(
+          `${this.currentUsername}_toggles`,
+          this.toggles,
+          `${this.currentUsername}_CDT`
+        );
+
+        info(`[CD] Set Rocket TP to ${this.toggles.rocketTp}`);
+      },
+    });
+  }
+  haversineDistance(aLat, aLon, bLat, bLon) {
+    function squared(x) {
+      return x * x;
+    }
+    function toRad(x) {
+      return (x * PI) / 180;
+    }
+    function hav(x) {
+      return squared(sin(x / 2));
+    }
+
+    const { asin, cos, sin, sqrt, PI } = Math;
+
+    const aLatRad = toRad(aLat);
+    const bLatRad = toRad(bLat);
+    const aLngRad = toRad(aLon);
+    const bLngRad = toRad(bLon);
+
+    const ht =
+      hav(bLatRad - aLatRad) +
+      cos(aLatRad) * cos(bLatRad) * hav(bLngRad - aLngRad);
+
+    return (
+      Math.round(100 * (2 * 6378137 * asin(sqrt(ht)) + Number.EPSILON)) / 100
+    );
+  }
+  calcCooldown(showToast = true) {
+    this.checkPlayer();
+    const curTimestamp = Date.now();
+    if (this.cdData.lat && this.cdData.lon && this.cdData.ts > 0) {
+      const distDiffInM = this.haversineDistance(
+        this.cdData.lat,
+        this.cdData.lon,
+        this.lat,
+        this.lon
+      );
+
+      const totalCD = this.getCoolDownTime(distDiffInM);
+      const timeDiff = this.cdData.ts + 1000 /* 1e3 */ * totalCD - curTimestamp;
+
+      if (timeDiff > 0 && showToast) {
+        oneLineMedium(
+          `${I18n_1.default.getText("cooldown.cooldown")}: ${this.formatTime(
+            timeDiff
+          )}\n(${I18n_1.default.getText("cooldown.distance.distance")}: ${
+            distDiffInM < 1000 /* 1e3 */
+              ? Math.ceil(distDiffInM) +
+                I18n_1.default.getText("cooldown.distance.m")
+              : Math.round(distDiffInM / 1000 /* 1e3 */) +
+                I18n_1.default.getText("cooldown.distance.km")
+          })`
+        );
+      }
+
+      return timeDiff;
+    }
+    return 0;
+  }
+  saveCooldown(trigger = -1, id = undefined) {
+    this.previousData.push(this.cdData);
+
+    if (this.previousData.length > 4) {
+      this.previousData.shift();
+    }
+
+    this.resetCdData();
+    this.cdData.trigger = trigger;
+    this.cdData.id = id;
+    this.cdData.lat = this.lat;
+    this.cdData.lon = this.lon;
+    this.cdData.ts = Date.now();
+
+    PersistentPrefs_1.default.set(
+      `${this.currentUsername}_cd`,
+      this.cdData,
+      `${this.currentUsername}_CDT`
+    );
+
+    info(
+      color.gray(
+        `[CD] New Cooldown saved > Location: ${this.cdData.lat},${this.cdData.lon}; Timestamp: ${this.cdData.ts}; T: ${this.cdData.trigger}`
+      )
+    );
+  }
+  resetCdData() {
+    this.cdData = { lat: 0, lon: 0, ts: 0, trigger: -1, id: undefined };
+  }
+  checkPlayer() {
+    const playerName = UserData_1.default.username;
+
+    if (this.currentUsername != playerName) {
+      info(
+        `[CD] player has changed: "${this.currentUsername}" > "${playerName}"`
+      );
+
+      this.currentUsername = playerName;
+      this.resetCdData();
+
+      PersistentPrefs_1.default.has(
+        `${this.currentUsername}_cd`,
+        `${this.currentUsername}_CDT`
+      ) &&
+        ((this.cdData = PersistentPrefs_1.default.get(
+          `${this.currentUsername}_cd`,
+          this.cdData,
+          `${this.currentUsername}_CDT`
+        )),
+        info(
+          color.cyan(
+            `[CD] Loaded CD data >> location: ${this.cdData.lat},${this.cdData.lon}; timestamp: ${this.cdData.ts}; t: ${this.cdData.trigger}`
+          )
+        ));
+
+      PersistentPrefs_1.default.has(
+        `${this.currentUsername}_toggles`,
+        `${this.currentUsername}_CDT`
+      ) &&
+        (this.toggles = PersistentPrefs_1.default.get(
+          `${this.currentUsername}_toggles`,
+          { preventThrows: true, rocketTp: true },
+          `${this.currentUsername}_CDT`
+        ));
+
+      info(`[CD] Set Prevent Throws to ${this.toggles.preventThrows}`);
+      info(`[CD] Set Rocket TP to ${this.toggles.rocketTp}`);
+
+      PogoUtils_1.PogoUtils.toggles.updateToggleValue(
+        "advanced_preventThrows",
+        this.toggles.preventThrows
+      );
+
+      PogoUtils_1.PogoUtils.toggles.updateToggleValue(
+        "advanced_autoRocketTp",
+        this.toggles.rocketTp
+      );
+    }
+  }
+  openMenu() {
+    this.checkPlayer();
+    const menu = new PogoUtils_1.PogoUtils.menu("cd_menu");
+    menu.setTitle(I18n_1.default.getText("cooldown.cooldown"));
+
+    menu.addButton({
+      name: I18n_1.default.getText("cooldown.ui.manualSave"),
+      id: "cd_manual",
+      callback: () => {
+        this.saveCooldown(T_MANUAL);
+      },
+    });
+
+    menu.addDivider();
+
+    menu.addCustom("baseButton", (clone) => {
+      const newButton = clone.base.base.GetComponentInChildren(
+        this._Button.typeof,
+        true
+      );
+      newButton.m_OnClick = null;
+      newButton.base.m_Interactable = false;
+
+      const newButtonLabel = clone.base.base.GetComponentInChildren(
+        this._Text.typeof,
+        true
+      );
+
+      const holoText =
+        newButtonLabel.$className == "I18nText"
+          ? newButtonLabel.base
+          : newButtonLabel;
+
+      holoText.textKey = "";
+      const holoText_base = holoText.base;
+      holoText_base.set_supportRichText(true);
+
+      holoText_base.set_text(
+        I18n_1.default.getText("cooldown.types.noRecords")
+      );
+
+      this.mainCdButton.text = holoText_base;
+      this.mainCdButton.button = newButton;
+      this.setupButton(this.cdData, this.mainCdButton);
+    });
+
+    menu.addCustom("baseButton", (clone) => {
+      const newButton = clone.base.base.GetComponentInChildren(
+        this._Button.typeof,
+        true
+      );
+      newButton.m_OnClick = null;
+      newButton.base.m_Interactable = false;
+
+      const newButtonLabel = clone.base.base.GetComponentInChildren(
+        this._Text.typeof,
+        true
+      );
+
+      const holoText =
+        newButtonLabel.$className == "I18nText"
+          ? newButtonLabel.base
+          : newButtonLabel;
+
+      holoText.textKey = "";
+      const holoText_base = holoText.base;
+      holoText_base.set_supportRichText(true);
+
+      holoText_base.set_text(
+        I18n_1.default.getText("cooldown.types.noRecords")
+      );
+
+      const go = clone.base.base.get_gameObject();
+      go.set_active(false);
+      this.addCdButton3.text = holoText_base;
+      this.addCdButton3.button = newButton;
+      this.addCdButton3.go = go;
+
+      if (this.previousData.length > 3) {
+        this.setupButton(this.previousData[3], this.addCdButton3);
+      }
+    });
+
+    menu.addCustom("baseButton", (clone) => {
+      const newButton = clone.base.base.GetComponentInChildren(
+        this._Button.typeof,
+        true
+      );
+      newButton.m_OnClick = null;
+      newButton.base.m_Interactable = false;
+
+      const newButtonLabel = clone.base.base.GetComponentInChildren(
+        this._Text.typeof,
+        true
+      );
+
+      const holoText =
+        newButtonLabel.$className == "I18nText"
+          ? newButtonLabel.base
+          : newButtonLabel;
+
+      holoText.textKey = "";
+      const holoText_base = holoText.base;
+      holoText_base.set_supportRichText(true);
+
+      holoText_base.set_text(
+        I18n_1.default.getText("cooldown.types.noRecords")
+      );
+
+      const go = clone.base.base.get_gameObject();
+      go.set_active(false);
+      this.addCdButton2.text = holoText_base;
+      this.addCdButton2.button = newButton;
+      this.addCdButton2.go = go;
+
+      if (this.previousData.length > 2) {
+        this.setupButton(this.previousData[2], this.addCdButton2);
+      }
+    });
+
+    menu.addCustom("baseButton", (clone) => {
+      const newButton = clone.base.base.GetComponentInChildren(
+        this._Button.typeof,
+        true
+      );
+      newButton.m_OnClick = null;
+      newButton.base.m_Interactable = false;
+
+      const newButtonLabel = clone.base.base.GetComponentInChildren(
+        this._Text.typeof,
+        true
+      );
+
+      const holoText =
+        newButtonLabel.$className == "I18nText"
+          ? newButtonLabel.base
+          : newButtonLabel;
+
+      holoText.textKey = "";
+      const holoText_base = holoText.base;
+      holoText_base.set_supportRichText(true);
+
+      holoText_base.set_text(
+        I18n_1.default.getText("cooldown.types.noRecords")
+      );
+
+      const go = clone.base.base.get_gameObject();
+      go.set_active(false);
+      this.addCdButton1.text = holoText_base;
+      this.addCdButton1.button = newButton;
+      this.addCdButton1.go = go;
+
+      if (this.previousData.length > 1) {
+        this.setupButton(this.previousData[1], this.addCdButton1);
+      }
+    });
+
+    menu.addCustom("baseButton", (clone) => {
+      const newButton = clone.base.base.GetComponentInChildren(
+        this._Button.typeof,
+        true
+      );
+      newButton.m_OnClick = null;
+      newButton.base.m_Interactable = false;
+
+      const newButtonLabel = clone.base.base.GetComponentInChildren(
+        this._Text.typeof,
+        true
+      );
+
+      const holoText =
+        newButtonLabel.$className == "I18nText"
+          ? newButtonLabel.base
+          : newButtonLabel;
+
+      holoText.textKey = "";
+      const holoText_base = holoText.base;
+      holoText_base.set_supportRichText(true);
+
+      holoText_base.set_text(
+        I18n_1.default.getText("cooldown.types.noRecords")
+      );
+
+      const go = clone.base.base.get_gameObject();
+      go.set_active(false);
+      this.addCdButton0.text = holoText_base;
+      this.addCdButton0.button = newButton;
+      this.addCdButton0.go = go;
+
+      if (this.previousData.length > 0) {
+        this.setupButton(this.previousData[0], this.addCdButton0);
+      }
+    });
+
+    const dAction = UnityUtils_1.default.makeAction(
+      "cooldown_menu_dismiss",
+      "System.Action",
+      () => {
+        this.menuOpen = false;
+        this.mainCdButton.text = undefined;
+        this.mainCdButton.button = undefined;
+        this.closeMenu = undefined;
+      }
+    );
+    menu.setDismissedCallback(dAction);
+    const oAction = UnityUtils_1.default.makeAction(
+      "cooldown_menu_open",
+      "System.Action",
+      () => {
+        this.menuOpen = true;
+      }
+    );
+    menu.setOpenCompletedCallback(oAction);
+    menu.open();
+
+    this.closeMenu = () => {
+      menu.close();
+    };
+  }
+  updatePokeballIndicator() {
+    if (this.fullPokeballCanvasGroup) {
+      const indicatorGo =
+        this.fullPokeballCanvasGroup.base.base.get_gameObject();
+      if (indicatorGo) {
+        const indicatorImage = indicatorGo.GetComponent(this._Image.typeof);
+        if (indicatorImage) {
+          const color = indicatorImage.base.base.get_color();
+          if (this.fullPokeballCanvasGroup.get_alpha() == 1 && color.r < 1) {
+            return;
+          }
+          const timeDiff = this.calcCooldown(false);
+
+          if (timeDiff > 0) {
+            indicatorImage.base.base.set_color(
+              ditto_1.default.use("UnityEngine.Color").$new(1, 0.3, 0, 1)
+            );
+
+            this.fullPokeballCanvasGroup.set_alpha(1);
+          } else {
+            this.fullPokeballCanvasGroup.set_alpha(0);
+          }
+        }
+      } else {
+        this.fullPokeballCanvasGroup = undefined;
+      }
+    }
+  }
+  updateIndicatorObject() {
+    if (this.indicatorObjectUpdateTask) {
+      return;
+    }
+    const f = () =>
+      100 > Date.now() - this.lastInventoryUpdateTs
+        ? void (this.indicatorObjectUpdateTask = setTimeout(f, 100))
+        : void ((this.fullPokeballCanvasGroup =
+            this.tempFullPokeballCanvasGroup),
+          (this.indicatorObjectUpdateTask = undefined));
+    this.indicatorObjectUpdateTask = setTimeout(f, 100);
+  }
+  setupButton(cdData, button) {
+    if (cdData.ts > 0 && button.text && button.button) {
+      const text = this.getMenuText(cdData);
+      button.text.set_text(text);
+
+      PogoUtils_1.PogoUtils.buttons.addButton({
+        id: button.id,
+        instance: button.button.$instance.toString(),
+        callback: () => {
+          this.teleport(cdData.lat, cdData.lon);
+
+          if (this.closeMenu) {
+            this.closeMenu();
+          }
+        },
+      });
+
+      if (button.go) {
+        button.go.set_active(true);
+      }
+    }
+  }
+  getMenuText(cdData) {
+    let text = "Unknown";
+    switch (cdData.trigger) {
+      case T_ENCOUNTER: {
+        text = I18n_1.default.getText("cooldown.types.catch");
+
+        if (cdData.id) {
+          text += ` - ${I18n_1.default.unity.getPokemonNameFromId(cdData.id)}`;
+        }
+
+        break;
+      }
+      case T_MANUAL: {
+        text = I18n_1.default.getText("cooldown.types.manual");
+        break;
+      }
+      case T_POI: {
+        text = I18n_1.default.getText("cooldown.types.pokestop");
+
+        if (cdData.id) {
+          text += ` - ${cdData.id}`;
+        }
+
+        break;
+      }
+      case T_BERRY: {
+        text = I18n_1.default.getText("cooldown.types.healing");
+
+        if (cdData.id) {
+          text += ` - ${cdData.id}`;
+        }
+
+        break;
+      }
+      case T_BATTLE: {
+        text = I18n_1.default.getText("cooldown.types.battle");
+
+        if (cdData.id) {
+          text += ` - ${cdData.id}`;
+        }
+
+        break;
+      }
+      case T_DEFENDER: {
+        text = I18n_1.default.getText("cooldown.types.defending");
+
+        if (cdData.id) {
+          text += ` - ${cdData.id}`;
+        }
+
+        break;
+      }
+      case T_PGP: {
+        text = I18n_1.default.getText("cooldown.types.pgp");
+
+        if (cdData.id) {
+          text += ` - ${cdData.id}`;
+        }
+      }
+    }
+    const distDiffInM = this.haversineDistance(
+      cdData.lat,
+      cdData.lon,
+      this.lat,
+      this.lon
+    );
+
+    text += `\n<size=22>${this.formatTime(
+      Date.now() - cdData.ts
+    )} ${I18n_1.default.getText("cooldown.time.ago")} - ${
+      distDiffInM < 1000 /* 1e3 */
+        ? Math.ceil(distDiffInM) + I18n_1.default.getText("cooldown.distance.m")
+        : Math.round(distDiffInM / 1000 /* 1e3 */) +
+          I18n_1.default.getText("cooldown.distance.km")
+    } - <i>${cdData.lat.toFixed(6)},${cdData.lon.toFixed(6)}</i></size>`;
+
+    return text;
+  }
+  teleport(lat, lon) {
+    info(color.gray(`[CD] Teleporting to ${lat},${lon}`));
+
+    if (typeof SharedUtils_1.default.handleLocationChange == "function") {
+      SharedUtils_1.default.handleLocationChange(lat, lon);
+    } else {
+      Java.send({ script: "teleport", content: { lat, lng: lon } });
+      Java.send({ script: "teleport", content: { lat, lng: lon } });
+    }
+  }
+  getCoolDownTime(distance) {
+    if (distance < 50) {
+      return 0;
+    }
+    if (distance < 30000 /* 3e4 */) {
+      return Math.ceil(distance / Math.asinh(20 * distance) / 2) + 1;
+    }
+    if (distance < 300000 /* 3e5 */) {
+      return Math.ceil(5 * Math.sqrt(16000 /* 16e3 */ + distance)) + 5;
+    }
+    if (distance < 1350000 /* 135e4 */) {
+      const res = Math.ceil(distance / 500 + Math.sqrt(16 * distance)) + 15;
+      return res > 7200 ? 7200 : res;
+    }
+    return 7200;
+  }
+  formatTime(s) {
+    const ms = s % 1000; /* 1e3 */
+    s = (s - ms) / 1000 /* 1e3 */;
+    const secs = s % 60;
+    s = (s - secs) / 60;
+    const mins = s % 60;
+    const hrs = (s - mins) / 60;
+    return hrs > 2
+      ? `${hrs}${I18n_1.default.getText("cooldown.time.h")}`
+      : (hrs == 0
+          ? ""
+          : `${hrs}${I18n_1.default.getText("cooldown.time.h")} `) +
+          (mins == 0
+            ? ""
+            : `${mins}${I18n_1.default.getText("cooldown.time.m")} `) +
+          `${secs}${I18n_1.default.getText("cooldown.time.s")}`;
+  }
+}
+export default CooldownTracker;

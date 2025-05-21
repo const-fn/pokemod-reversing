@@ -1,0 +1,253 @@
+(function (setImmediate) {
+  (() => {
+    const __importDefault = (mod) =>
+      mod && mod.__esModule ? mod : { default: mod };
+    const ditto_1 = __importDefault(require("@pkmd/ditto"));
+    const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+    const Toast_1 = require("../utils/Toast");
+    const UserData_1 = __importDefault(require("../utils/UserData"));
+    const I18n_1 = __importDefault(require("../utils/I18n"));
+    const PogoUtils_1 = require("../utils/PogoUtils");
+    const VOLUME_DOWN = 25;
+    const IGNORED_POKEMON = [352, 201, 132, 570, 999];
+    class TransferOnCatch extends ModuleBase_1.default {
+      constructor() {
+        super();
+        this.currentPokemon = {};
+        this.xlCandy = "";
+        this.ditto = "";
+        this.tocString = "";
+        this.dontTransfer = false;
+        this.isInEncounter = false;
+      }
+      xlCandyToast(catchpokemonoutproto) {
+        const catchpokemonoutproto_scores = catchpokemonoutproto.scores_;
+        if (!catchpokemonoutproto_scores) {
+          return void (this.xlCandy = "");
+        }
+        const obtainedXlCandy =
+          catchpokemonoutproto_scores.xlCandy_.get_Item(0);
+        return obtainedXlCandy
+          ? void (this.xlCandy = `\n${I18n_1.default.getText(
+              "toast.instantResult.xlCandy",
+              {
+                obtainedXlCandy,
+              }
+            )}`)
+          : void (this.xlCandy = "");
+      }
+      init() {
+        super.init();
+        const self = this;
+        const CatchPokemonOutProto = ditto_1.default.use(
+          "CatchPokemonOutProto"
+        );
+        CatchPokemonOutProto[
+          "pb::Niantic.Protobuf.IBufferMessage.InternalMergeFrom"
+        ].attach({
+          onLeave() {
+            const manualPokemonId = this.capturedPokemonId_;
+
+            if (manualPokemonId != 0) {
+              self.currentPokemon = { id: manualPokemonId, isPgp: false };
+              self.xlCandyToast(this);
+            }
+          },
+        });
+        const PgpActivityMonitorDisplayClass = ditto_1.default.use(
+          "Niantic.Holoholo.Pgp.PgpActivityMonitor/<>c__DisplayClass22_0"
+        );
+        PgpActivityMonitorDisplayClass["<HandleActionLog>b__1"].attach({
+          onEnter(args) {
+            this.actionLogEntry = args[0];
+          },
+          onLeave(retval) {
+            if (retval && this.actionLogEntry.sfida_) {
+              const catchPokemonLogEntry =
+                this.actionLogEntry.get_CatchPokemon();
+              if (!catchPokemonLogEntry) {
+                return;
+              }
+              const catchPokemonLogEntry_pokemonId =
+                catchPokemonLogEntry.pokemonId_;
+
+              if (catchPokemonLogEntry_pokemonId != 0) {
+                self.currentPokemon = {
+                  id: catchPokemonLogEntry_pokemonId,
+                  isPgp: true,
+                };
+              }
+            }
+          },
+        });
+        const PokemonBagImpl = ditto_1.default.use("PokemonBagImpl");
+        PokemonBagImpl.HandleOnInventoryUpdate.attach({
+          onLeave() {
+            let _self$currentPokemon;
+            if (
+              !(
+                null != (_self$currentPokemon = self.currentPokemon) &&
+                _self$currentPokemon.id
+              )
+            ) {
+              return;
+            }
+            const pokemonProto = this.GetPokemon(self.currentPokemon.id);
+            if (!pokemonProto) {
+              return;
+            }
+
+            const {
+              id_,
+              individualAttack_,
+              individualDefense_,
+              individualStamina_,
+              originDetail_,
+              pokemonId_,
+            } = pokemonProto;
+
+            if (!id_.equals(self.currentPokemon.id)) {
+              return;
+            }
+            const isShiny = pokemonProto.pokemonDisplay_.shiny_;
+            const isPremierBall = pokemonProto.pokeball_ == 5;
+            const pokemonSettingsProto = pokemonProto.get_settingsProto();
+            const isLegendOrMythic = pokemonSettingsProto.pokemonClass_ != 0;
+            const pokemonSettingsProto_isTransferable =
+              pokemonSettingsProto.isTransferable_;
+            const isNotWild = originDetail_.originDetailCase_ != 1;
+            const ivString = `${individualAttack_}/${individualDefense_}/${individualStamina_}`;
+            const ivPercentage = Math.round(
+              100 *
+                ((individualAttack_ + individualDefense_ + individualStamina_) /
+                  45)
+            );
+            const dontTransfer =
+              !self.currentPokemon.isPgp && self.dontTransfer;
+            let keep90IV = false;
+
+            if (UserData_1.default.tier == "dev") {
+              keep90IV = PogoUtils_1.PogoUtils.toggles.isToggled("Toc90IV");
+            }
+
+            if (
+              (individualAttack_ == 15 &&
+                individualDefense_ == 15 &&
+                individualStamina_ == 15) ||
+              (individualAttack_ == 0 &&
+                individualDefense_ == 0 &&
+                individualStamina_ == 0) ||
+              isShiny ||
+              isPremierBall ||
+              isLegendOrMythic ||
+              !pokemonSettingsProto_isTransferable ||
+              isNotWild ||
+              dontTransfer ||
+              (keep90IV && ivPercentage >= 90) ||
+              IGNORED_POKEMON.includes(pokemonId_)
+            ) {
+              self.tocString = `\n[${I18n_1.default.getText(
+                "toast.toc.notTransferred"
+              )}]`;
+
+              self.currentPokemon = {};
+
+              info(
+                `Pokemon meets a certain condition, Not transferable ${ivString}`
+              );
+            } else {
+              this.ReleasePokemon(pokemonProto);
+
+              self.tocString = `\n[${I18n_1.default.getText(
+                "toast.toc.transferred"
+              )}]`;
+
+              self.currentPokemon = {};
+              info(`Transfered Pokemon ${ivString}`);
+            }
+
+            if (pokemonId_ == 132) {
+              self.ditto = `\n${I18n_1.default.getText(
+                "toast.instantResult.maybeShinyDitto",
+                { maybeShiny: isShiny ? " shiny" : "" }
+              )}`;
+            }
+
+            Java.send({
+              script: "catch_status",
+              content: {
+                result:
+                  I18n_1.default.getText("toast.instantResult.catchSuccess") +
+                  self.tocString +
+                  self.xlCandy +
+                  self.ditto,
+                resultCode: 1,
+              },
+            });
+
+            self.tocString = "";
+            self.xlCandy = "";
+            self.ditto = "";
+          },
+        });
+        const EncounterState = ditto_1.default.use(
+          "Niantic.Holoholo.Encounter.EncounterState"
+        );
+
+        EncounterState.Initialize.attach({
+          onLeave() {
+            self.isInEncounter = true;
+            self.dontTransfer = false;
+            self.prevTransferVal = false;
+          },
+        });
+
+        EncounterState.ExitState.overload().attach({
+          onLeave() {
+            self.isInEncounter = false;
+          },
+        });
+
+        const ItemSelectionSliderGuiController = ditto_1.default.use(
+          "Niantic.Holoholo.UI.Items.ItemSelectionSliderGuiController"
+        );
+
+        ItemSelectionSliderGuiController.OpenInfoGui.replace(function () {
+          if (self.isInEncounter && !self.dontTransfer) {
+            self.dontTransfer = true;
+
+            (0, Toast_1.oneLineMedium)(
+              I18n_1.default.getText("toast.toc.disabldToc")
+            );
+          }
+
+          this.base.Dismiss();
+        });
+
+        setImmediate(() => {
+          Java.perform(() => {
+            const KeyEvent = Java.use("android.view.KeyEvent");
+            KeyEvent.getKeyCode.implementation = function () {
+              const keycode = this.getKeyCode();
+
+              if (
+                keycode == VOLUME_DOWN &&
+                self.isInEncounter &&
+                !self.dontTransfer
+              ) {
+                self.dontTransfer = true;
+
+                (0, Toast_1.oneLineMedium)(
+                  I18n_1.default.getText("toast.toc.disabldToc")
+                );
+              }
+
+              return keycode;
+            };
+          });
+        });
+      }
+    }
+    exports.default = TransferOnCatch;
+  }).call(this);
+}).call(this, require("timers").setImmediate);

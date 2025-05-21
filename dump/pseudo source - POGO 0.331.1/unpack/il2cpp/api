@@ -1,0 +1,255 @@
+export const __esModule = true;
+export { initIl2CppApi };
+const fastOptions = { exceptions: "propagate", scheduling: "exclusive" };
+
+const Il2cppApi = {
+  assembly_get_image: ["pointer", ["pointer"]],
+  alloc: ["pointer", ["size_t"]],
+  free: ["void", ["pointer"]],
+  domain_get: ["pointer", []],
+  domain_assembly_open: ["pointer", ["pointer", "pointer"]],
+  domain_get_assemblies: ["pointer", ["pointer", "pointer"]],
+  string_new_utf16: ["pointer", ["pointer", "int"]],
+  string_intern: ["pointer", ["pointer"]],
+  class_is_assignable_from: ["bool", ["pointer", "pointer"]],
+  class_from_name: ["pointer", ["pointer", "pointer", "pointer"]],
+  class_get_method_from_name: ["pointer", ["pointer", "pointer", "int"]],
+  class_get_field_from_name: ["pointer", ["pointer", "pointer"]],
+  class_get_property_from_name: ["pointer", ["pointer", "pointer"]],
+  class_get_methods: ["pointer", ["pointer", "pointer"]],
+  class_get_name: ["pointer", ["pointer"]],
+  class_get_declaring_type: ["pointer", ["pointer"]],
+  class_get_namespace: ["pointer", ["pointer"]],
+  class_get_image: ["pointer", ["pointer"]],
+  class_get_parent: ["pointer", ["pointer"]],
+  class_get_type: ["pointer", ["pointer"]],
+  class_get_fields: ["pointer", ["pointer", "pointer"]],
+  class_get_nested_types: ["pointer", ["pointer", "pointer"]],
+  class_get_interfaces: ["pointer", ["pointer", "pointer"]],
+  class_get_element_class: ["pointer", ["pointer"]],
+  class_is_enum: ["bool", ["pointer"]],
+  class_is_abstract: ["bool", ["pointer"]],
+  class_is_generic: ["bool", ["pointer"]],
+  class_is_interface: ["bool", ["pointer"]],
+  class_instance_size: ["int", ["pointer"]],
+  class_is_valuetype: ["bool", ["pointer"]],
+  class_enum_basetype: ["pointer", ["pointer"]],
+  class_value_size: ["int", ["pointer", "pointer"]],
+  class_is_assignable_from: ["bool", ["pointer", "pointer"]],
+  class_has_parent: ["bool", ["pointer", "pointer"]],
+  class_get_assemblyname: ["pointer", ["pointer"]],
+  class_from_il2cpp_type: ["pointer", ["pointer"]],
+  class_from_system_type: ["pointer", ["pointer"]],
+  field_get_value_object: ["pointer", ["pointer", "pointer"]],
+  field_set_value_object: ["void", ["pointer", "pointer", "pointer"]],
+  field_get_value: ["void", ["pointer", "pointer", "pointer"]],
+  field_set_value: ["void", ["pointer", "pointer", "pointer"]],
+  field_static_get_value: ["void", ["pointer", "pointer"]],
+  field_static_set_value: ["void", ["pointer", "pointer"]],
+  field_get_name: ["pointer", ["pointer"]],
+  field_get_flags: ["int", ["pointer"]],
+  field_get_offset: ["int", ["pointer"]],
+  field_get_type: ["pointer", ["pointer"]],
+  object_get_class: ["pointer", ["pointer"]],
+  property_get_get_method: ["pointer", ["pointer"]],
+  property_get_set_method: ["pointer", ["pointer"]],
+  object_new: ["pointer", ["pointer"]],
+  method_get_name: ["pointer", ["pointer"]],
+  method_get_param_name: ["pointer", ["pointer", "int"]],
+  method_get_param_count: ["int", ["pointer"]],
+  method_get_flags: ["int", ["pointer", "int"]],
+  method_get_return_type: ["pointer", ["pointer"]],
+  method_get_param: ["pointer", ["pointer", "int"]],
+  type_get_name: ["pointer", ["pointer"]],
+  type_get_type: ["int", ["pointer"]],
+  type_get_attrs: ["int", ["pointer"]],
+  type_get_object: ["pointer", ["pointer"]],
+  type_get_class_or_element_class: ["pointer", ["pointer"]],
+  type_is_byref: ["bool", ["pointer"]],
+  type_equals: ["bool", ["pointer", "pointer"]],
+  thread_attach: ["pointer", ["pointer"]],
+  thread_current: ["pointer", []],
+  thread_detach: ["void", ["pointer"]],
+  is_vm_thread: ["bool", ["pointer"]],
+  thread_get_all_attached_threads: ["pointer", ["pointer"]],
+  current_thread_get_frame_at: ["bool", ["pointer", "pointer"]],
+  current_thread_get_stack_depth: ["int", []],
+  current_thread_get_top_frame: ["bool", ["pointer"]],
+  current_thread_walk_frame_stack: ["void", ["pointer", "pointer"]],
+  array_length: ["int", ["pointer"]],
+  array_get_byte_length: ["int", ["pointer"]],
+  array_new: ["pointer", ["pointer", "int"]],
+  format_exception: ["void", ["pointer", "pointer", "int"]],
+  format_stack_trace: ["void", ["pointer", "pointer", "int"]],
+  get_exception_argument_null: ["pointer", ["pointer"]],
+  raise_exception: ["pointer", ["pointer"]],
+  capture_memory_snapshot: ["pointer", []],
+  memory_snapshot_get_information: [
+    ["uint32", "uint32", "uint32", "uint32", "uint32", "uint32"],
+    ["pointer"],
+  ],
+  free_captured_memory_snapshot: ["void", ["pointer"]],
+  image_get_class: ["pointer", ["pointer", "long"]],
+  image_get_class_count: ["long", ["pointer"]],
+  image_get_name: ["pointer", ["pointer"]],
+  image_get_entry_point: ["pointer", ["pointer"]],
+  runtime_invoke: ["pointer", ["pointer", "pointer", "pointer", "pointer"]],
+  object_unbox: ["pointer", ["pointer"]],
+  value_box: ["pointer", ["pointer", "pointer"]],
+  monitor_enter: ["bool", ["pointer"]],
+  monitor_exit: ["bool", ["pointer"]],
+  monitor_try_enter: ["bool", ["pointer", "int"]],
+  monitor_pulse: ["bool", ["pointer"]],
+  monitor_pulse_all: ["bool", ["pointer"]],
+  monitor_wait: ["bool", ["pointer"]],
+  monitor_try_wait: ["bool", ["pointer", "int"]],
+  gchandle_new: ["int", ["pointer", "bool"]],
+  gchandle_free: ["void", ["int"]],
+  gc_collect: ["void", ["int"]],
+  gc_collect_a_little: ["int", []],
+  gc_enable: ["void", []],
+  gc_disable: ["void", []],
+  get_corlib: ["pointer", []],
+  gc_is_disabled: ["bool", []],
+  gc_get_used_size: ["long", []],
+  stop_gc_world: ["void", []],
+  start_gc_world: ["void", []],
+  unity_liveness_calculation_begin: [
+    "pointer",
+    ["pointer", "int", "pointer", "pointer", "pointer", "pointer"],
+  ],
+  unity_liveness_calculation_end: ["void", ["pointer"]],
+  unity_liveness_allocate_struct: [
+    "pointer",
+    ["pointer", "int", "pointer", "pointer", "pointer"],
+  ],
+  unity_liveness_finalize: ["void", ["pointer"]],
+  unity_liveness_free_struct: ["void", ["pointer"]],
+  unity_liveness_calculation_from_statics: ["void", ["pointer"]],
+  stats_dump_to_file: ["bool", ["pointer"]],
+  thread_get_top_frame: ["pointer", ["pointer"]],
+  thread_walk_frame_stack: ["void", ["pointer", "pointer", "pointer"]],
+  add_internal_call: ["void", ["pointer", "pointer"]], // void il2cpp_add_internal_call(char *name,Il2CppMethodPointer method)
+  resolve_icall: ["pointer", ["pointer"]], // Il2CppMethodPointer il2cpp_resolve_icall(char *name)
+  unhandled_exception: ["void", ["pointer"]],
+  __cxa_get_globals: ["pointer", []],
+  __cxa_allocate_exception: ["void", ["int"]],
+  __cxa_throw: ["void", ["pointer", "pointer", "pointer"]],
+  __cxa_free_exception: ["void", ["pointer"]],
+  pthread_create: ["pointer", ["pointer", "pointer", "pointer", "pointer"]],
+  pthread_self: ["pointer", []],
+  gettid: ["int", []],
+  getpid: ["int", []],
+  sleep: ["int", ["int"]] /*
+      Not exported below
+      Requires dynamically grabbing the pointers using something like this: https://pk.md/dWN
+  */, // gc_start_incremental_collection:         ["void", []],
+  // string_set_length:                       ["void", ["pointer", "int32"]],
+  // array_get_elements:                      ["pointer", ["pointer"]],
+  // class_get_actual_instance_size:          ["int32", ["pointer"]],
+  // method_get_pointer:                      ["pointer", ["pointer"]],
+  // THIS FAILS IN ANDROID 7 AND BREAKS THE ENTIRE AGENT! USE SOMETHING ELSE IF YOU NEED THREAD NAMES IN PROD
+  // pthread_getname_np:                      ["int", ["pointer", "pointer"]], // int pthread_getname_np(pthread_t thread, char *name);
+};
+
+const source = `
+#include <stdint.h>
+#include <string.h>
+
+typedef struct _Il2CppManagedMemorySnapshot Il2CppManagedMemorySnapshot;
+typedef struct _Il2CppObject Il2CppObject;
+typedef enum _Il2CppTypeEnum Il2CppTypeEnum;
+typedef struct _Il2CppReflectionMethod Il2CppReflectionMethod;
+typedef struct _Il2CppManagedMemorySnapshot Il2CppManagedMemorySnapshot;
+typedef struct _Il2CppMetadataType Il2CppMetadataType;
+
+
+struct _Il2CppManagedMemorySnapshot
+{
+  struct Il2CppManagedHeap
+  {
+      uint32_t section_count;
+      void * sections;
+  } heap;
+  struct Il2CppStacks
+  {
+      uint32_t stack_count;
+      void * stacks;
+  } stacks;
+  struct Il2CppMetadataSnapshot
+  {
+      uint32_t type_count;
+      Il2CppMetadataType * types;
+  } metadata_snapshot;
+  struct Il2CppGCHandles
+  {
+      uint32_t tracked_object_count;
+      Il2CppObject ** pointers_to_objects;
+  } gc_handles;
+  struct Il2CppRuntimeInformation
+  {
+      uint32_t pointer_size;
+      uint32_t object_header_size;
+      uint32_t array_header_size;
+      uint32_t array_bounds_offset_in_header;
+      uint32_t array_size_offset_in_header;
+      uint32_t allocation_granularity;
+  } runtime_information;
+  void * additional_user_information;
+};
+
+struct Il2CppRuntimeInformation
+il2cpp_memory_snapshot_get_information (const Il2CppManagedMemorySnapshot * snapshot)
+{
+  return snapshot->runtime_information;
+}`;
+
+const cModule = new CModule(source);
+/*
+ * Some exports are only pointers to a jump instruction,
+ * if this is the case, this parses the instruction and
+ * return the actual address instead
+ */ function getRealAddress(aimAddr) {
+  const instruction = Instruction.parse(aimAddr);
+  const instruction_mnemonic = instruction.mnemonic;
+  if (instruction_mnemonic == "b") {
+    const newAddress = instruction.opStr.split("#")[1];
+    return ptr(newAddress);
+  }
+  return aimAddr;
+}
+function initIl2CppApi() {
+  Object.keys(Il2cppApi).map((exportName) => {
+    let aimAddr = Module.findExportByName(
+      "libil2cpp.so",
+      `il2cpp_${exportName}`
+    );
+    if (aimAddr) {
+      const jmpAddr = getRealAddress(aimAddr);
+      return void (Il2cppApi[exportName] = new NativeFunction(
+        jmpAddr,
+        ...Il2cppApi[exportName],
+        fastOptions
+      ));
+    }
+    return ((aimAddr = Module.findExportByName(
+      "libil2cpp.so",
+      `${exportName}`
+    )),
+    aimAddr)
+      ? void (Il2cppApi[exportName] = new NativeFunction(
+          aimAddr,
+          ...Il2cppApi[exportName],
+          fastOptions
+        ))
+      : ((aimAddr = cModule[`il2cpp_${exportName}`]), aimAddr)
+      ? void (Il2cppApi[exportName] = new NativeFunction(
+          aimAddr,
+          ...Il2cppApi[exportName],
+          fastOptions
+        ))
+      : undefined; // console.warn(`Export ${exportName} not found on libl2cpp.so!, it might be deprecated.`);
+  });
+}
+const _default = Il2cppApi;
+export default _default;

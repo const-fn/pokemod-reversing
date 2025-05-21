@@ -1,0 +1,52 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const ObjectInstance_1 = __importDefault(require("../utils/ObjectInstance"));
+class PinapMaster extends ModuleBase_1.default {
+  constructor() {
+    super();
+    this.pinapBerryId = 705;
+    this.itemBagImplInstance = null;
+    this.encounterInteractionStateInstance = null;
+  }
+  init() {
+    super.init();
+    const self = this;
+
+    this.itemBagImplInstance = new ObjectInstance_1.default(
+      "ItemBagImpl",
+      "GetItem"
+    );
+
+    this.encounterInteractionStateInstance = new ObjectInstance_1.default(
+      "Niantic.Holoholo.Encounter.EncounterInteractionState",
+      "InitializeState",
+      false
+    );
+
+    const EncounterState = ditto_1.default.use(
+      "Niantic.Holoholo.Encounter.EncounterState"
+    );
+    EncounterState.get_IsEncounteredPokemonShiny.attach({
+      onEnter() {
+        const mapPokemon = this.get_MapPokemon();
+
+        if (
+          self.encounterInteractionStateInstance.value.get_CanUseBerry() &&
+          self.itemBagImplInstance.value.HasItem(self.pinapBerryId)
+        ) {
+          self.itemBagImplInstance.value.UseItemForEncounter(
+            self.pinapBerryId,
+            mapPokemon
+          );
+
+          self.encounterInteractionStateInstance.value.set_ActiveBerry(
+            self.pinapBerryId
+          );
+        }
+      },
+    });
+  }
+}
+export default PinapMaster;

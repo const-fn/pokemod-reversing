@@ -1,0 +1,677 @@
+import { oneLineMedium } from "../utils/Toast";
+import PogoUtils_1 from "../utils/PogoUtils";
+import Common_1 from "../utils/Common";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const ObjectInstance_1 = __importDefault(require("../utils/ObjectInstance"));
+const I18n_1 = __importDefault(require("../utils/I18n"));
+const UserData_1 = __importDefault(require("../utils/UserData"));
+const PersistentPrefs_1 = __importDefault(require("../utils/PersistentPrefs"));
+class FirstAidKit extends ModuleBase_1.default {
+  constructor() {
+    super();
+    this.showWarningModal = undefined;
+    this.skipVersusScreen = false;
+    this.talkToMeWillow = false;
+    this.skipBadgeAnim = true;
+    this.leekduck = true;
+    this.biomes = false;
+    this.unityPlayerPreferencesStorageInst = undefined;
+    this._Promise = undefined;
+    this._Promise1 = undefined;
+    this._String = undefined;
+    this._MapsApi = undefined;
+    this._Application = undefined;
+    this.getReverseGeocodedAddress = undefined;
+    this.getReverseGeocodedAddress2 = undefined;
+    this.tappableTimeout = undefined;
+    this.targetFPS = undefined;
+
+    this.celestialBodies = [
+      "Moon",
+      "Mercury",
+      "Venus",
+      "Earth",
+      "Mars",
+      "Jupiter",
+      "Saturn",
+      "Uranus",
+      "Neptune",
+      "Pluto",
+    ];
+  }
+  init() {
+    super.init();
+    const self = this;
+    this._Promise = ditto_1.default.use("Niantic.Promises.Promise");
+    this._Promise1 = ditto_1.default.use("Niantic.Promises.Promise`1");
+    this._String = ditto_1.default.use("System.String");
+    this._MapsApi = ditto_1.default.use("Niantic.Holoholo.GoogleMapsApi");
+    this._Application = ditto_1.default.use("UnityEngine.Application");
+
+    this.unityPlayerPreferencesStorageInst = new ObjectInstance_1.default(
+      "Niantic.Zeppelin.Preferences.UnityPlayerPreferencesStorage"
+    );
+
+    const SpeedService = ditto_1.default.use(
+      "Niantic.Holoholo.Map.SpeedService"
+    );
+
+    SpeedService.get_ShouldCheckSpeed.replace(() => false);
+
+    SpeedService.SpeedExceedsLimit.replace(() => false);
+
+    const MapRootState = ditto_1.default.use("Niantic.Holoholo.MapRootState");
+    MapRootState.PromptToQuit.replace(() => {});
+    const NearbyRaidNotification = ditto_1.default.use(
+      "NearbyRaidNotification"
+    );
+    NearbyRaidNotification.get_Read.replace(() => true);
+    const WeatherLocationService = ditto_1.default.use(
+      "Niantic.Holoholo.Weather.WeatherLocationService"
+    );
+    WeatherLocationService.SendGameplayWeatherCallBack.attach({
+      onEnter(args) {
+        args[1] = false;
+      },
+    });
+    const NearbyPokemonPreviewGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.NearbyPokemon.NearbyPokemonPreviewGuiController"
+    );
+    NearbyPokemonPreviewGuiController.HandleGameplayWeatherChanged.attach({
+      onEnter(args) {
+        args[1] = false;
+      },
+    });
+    const QuestDialogGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.Quests.QuestDialogGuiController"
+    );
+    QuestDialogGuiController.Initialize.attach({
+      onLeave() {
+        if (!self.talkToMeWillow) {
+          this.ClickSkip();
+        }
+      },
+    });
+    const PokemonCutsceneService = ditto_1.default.use(
+      "Niantic.Holoholo.Cutscenes.PokemonCutsceneService"
+    );
+
+    PokemonCutsceneService.PlayEvolveCutscene.replace(function (...args) {
+      return Common_1.shouldCancelEvolveSkip
+        ? this.PlayEvolveCutscene(...args)
+        : self.getNiaPromise();
+    });
+
+    PokemonCutsceneService.PlayMegaEvolveCutscene.replace(
+      (fromPokemon, toPokemon, unkBool, onLoaded) => {
+        if (onLoaded && onLoaded.$has("Invoke")) {
+          onLoaded.Invoke();
+        }
+
+        return self.getNiaPromise();
+      }
+    );
+
+    PokemonCutsceneService.PlayPurifyCutscene.replace((...args) =>
+      self.getNiaPromise()
+    );
+
+    PokemonCutsceneService.PlayEggHatchCutscene.replace((...args) =>
+      self.getNiaPromise()
+    );
+
+    const UserPromptsService = ditto_1.default.use(
+      "Niantic.Holoholo.UI.UserPromptsService"
+    );
+    self.showWarningModal = UserPromptsService.ShowModalInternal.attach({
+      onEnter(args) {
+        this.data = args[0];
+      },
+      onLeave() {
+        let _this$data;
+        let _this$data$Message;
+
+        if (
+          0 ==
+          (null == (_this$data = this.data) ||
+            null == (_this$data$Message = _this$data.Message) ||
+            _this$data$Message.indexOf("boot_safety_warning"))
+        ) {
+          this.get_ActiveModal().base.ButtonPressed(1);
+        }
+      },
+    });
+    const PokemonInventoryCellView = ditto_1.default.use(
+      "Niantic.Holoholo.UI.PokemonInventoryCellView"
+    );
+    PokemonInventoryCellView.PlaySelectAnimation.replace(() => {});
+
+    PokemonInventoryCellView.PlayHealAnimation.replace(function (
+      healingItem,
+      endValue
+    ) {
+      return this.PlayHealAnimation(healingItem, endValue, 0.1);
+    });
+
+    ditto_1.default
+      .use("Niantic.Holoholo.UI.DeviceServices.DeviceServicePromptService")
+      .RequestPermissionsFlow.replace(function (
+        deviceService,
+        permissionContext
+      ) {
+        if (1 & (permissionContext >> 5)) {
+          info(color.magenta.bold("Allowing Adventure Sync Dialog"));
+        } else {
+          info(
+            color.magenta.bold(
+              "Disabling Adventure Sync Dialog as it didn't came from SettingsToggle"
+            )
+          );
+
+          permissionContext = 0;
+        }
+
+        return this.RequestPermissionsFlow(deviceService, permissionContext);
+      });
+
+    const NumericalPickerDialog = ditto_1.default.use(
+      "Niantic.Holoholo.UI.NumericalPickerDialog"
+    );
+
+    const nativeNumericalPickerDialog_Initialize =
+      NumericalPickerDialog.Initialize.overload(
+        "string",
+        "string",
+        "string",
+        "UnityEngine.Sprite",
+        "int",
+        "int",
+        "int",
+        "UserResponsePromise_ModalEvent_int_",
+        "IModalButton[]"
+      ).methodInfo.readPointer();
+
+    Interceptor.attach(nativeNumericalPickerDialog_Initialize, {
+      onEnter(args) {
+        if (args[2].toString() != ptr("0x0")) {
+          args[5] = args[7];
+        }
+      },
+    });
+    const CombatPreparationRootGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.Combat.Preparation.CombatPreparationRootGuiController"
+    );
+    CombatPreparationRootGuiController.Initialize.attach({
+      onEnter() {
+        if (self.skipVersusScreen) {
+          this.versusScreenDurationSec = 0;
+          this.combatTransitionDurationSec = 0;
+        }
+      },
+    });
+    if (
+      ["explorer", "beta", "extra", "dev", "bot"].includes(
+        UserData_1.default.tier
+      )
+    ) {
+      if (!this.isEnabled("InstantSpin")) {
+        info(color.cyan("Activated fast Kecleon spawn."));
+        const PokeStopSpawnPokemonState = ditto_1.default.use(
+          "PokeStopSpawnPokemonState"
+        );
+        PokeStopSpawnPokemonState.EnterState.attach({
+          onLeave() {
+            this.SpawnPokeStopPokemon();
+
+            oneLineMedium(
+              I18n_1.default.getText("toast.packSpeed.spawnPokeStopPokemon")
+            );
+          },
+        });
+      }
+      info(color.cyan("Activated Tappable Tapper."));
+      const DynamicTappableController = ditto_1.default.use(
+        "DynamicTappableController"
+      );
+
+      DynamicTappableController.get_Position.attach({
+        onLeave() {
+          self.tryCollectTappable(this);
+        },
+      });
+
+      DynamicTappableController.Init.attach({
+        onLeave() {
+          const checkGOs = () => {
+            let empty = false;
+
+            this.$fields.some((f) => {
+              if (
+                f.type.name == "UnityEngine.GameObject" &&
+                !this[f.fieldName]
+              ) {
+                empty = true;
+                return true;
+              }
+            });
+
+            if (empty) {
+              if (self.tappableTimeout) {
+                setTimeout(checkGOs, 100);
+              }
+            } else {
+              PogoUtils_1.PogoUtils.Update(() => {
+                warn("Collecting Tappable from a falback.");
+                self.tryCollectTappable(this);
+              });
+            }
+          };
+
+          if (this.tappableAction) {
+            self.tappableTimeout = setTimeout(() => {
+              warn("Tappable collecting timed out.");
+              self.tappableTimeout = undefined;
+            }, 3000 /* 3e3 */);
+
+            checkGOs();
+          }
+        },
+      });
+    }
+    const GymBadgeRenderView = ditto_1.default.use("GymBadgeRenderView");
+    GymBadgeRenderView.Initialize.attach({
+      onLeave() {
+        const progressText = this.progressText.get_text();
+        const viewRTR = this.base.base.base.get_transform();
+        const progressBarRTR = viewRTR.base.GetChild(4);
+        if (progressBarRTR.base.FindChild("pokemodtext")) {
+          return void this.progressText.set_text(`\n${progressText}`);
+        }
+        const newText = ditto_1.default
+          .use("UnityEngine.Object")
+          .Instantiate(this.gymName, progressBarRTR.base);
+        newText.set_text(`\n${progressText}`);
+
+        newText.base[
+          "UnityEngine.UI.IClippable.get_gameObject"
+        ]().base.set_name("pokemodtext");
+
+        this.progressText = newText;
+      },
+    });
+    const BadgeService = ditto_1.default.use(
+      "Niantic.Holoholo.Badges.BadgeService"
+    );
+    BadgeService.ShowAwardedBadge.replace(function (badgeData) {
+      if (!self.skipBadgeAnim) {
+        this.ShowAwardedBadge(badgeData);
+      }
+    });
+    const MainMenuGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.Map.UI.MainMenuGuiController"
+    );
+
+    MainMenuGuiController.ClickEvents.replace(function () {
+      if (self.leekduck) {
+        ditto_1.default
+          .use("UnityEngine.Application")
+          .OpenURL("https://leekduck.com/events/");
+
+        ditto_1.default.Telemetry.sendLogTelemetry(
+          "leekduck_button_pressed",
+          ""
+        );
+      } else {
+        this.ClickEvents();
+      }
+    });
+
+    this._Application.set_targetFrameRate.replace(function (value) {
+      if (!self.targetFPS && PersistentPrefs_1.default.has("target_fps")) {
+        self.targetFPS = PersistentPrefs_1.default.get("target_fps", 30);
+      }
+
+      if (self.targetFPS && value != self.targetFPS) {
+        info(
+          `Application.set_targetFrameRate: replacing target ${value} with ${self.targetFPS}`
+        );
+
+        value = self.targetFPS;
+      }
+
+      this.set_targetFrameRate(value);
+    });
+
+    if (PersistentPrefs_1.default.get("MetadataAntilagEnabled", true)) {
+      this.getReverseGeocodedAddress =
+        this._MapsApi.GetReverseGeocodedAddress.overload("long").replace(() =>
+          self.makeStringPromise()
+        );
+
+      this.getReverseGeocodedAddress2 =
+        this._MapsApi.GetReverseGeocodedAddress.overload(
+          "Niantic.LatLng"
+        ).replace(() => self.makeStringPromise(self.getRandomPlanet()));
+
+      info(color.cyan("Activated Metadata Antilag"));
+    }
+
+    this.biomes = PersistentPrefs_1.default.get("force_biomes", false);
+
+    if (!this.isEnabled("PerformanceMode")) {
+      if (this.biomes) {
+        info(color.white.bgRed("VISTA ALERT! BIOMES ARE ENABLED!"));
+      } else {
+        info(color.cyan("Disabling Vista (Biomes) Graphics."));
+      }
+
+      const EnvironmentDataService = ditto_1.default.use(
+        "EnvironmentDataService"
+      );
+
+      EnvironmentDataService.get_IsVistaEnabled.replace(() => self.biomes);
+
+      EnvironmentDataService.get_IsVistaEncounterEnabled.replace(
+        () => self.biomes
+      );
+
+      EnvironmentDataService.get_IsVistaBattleEnabled.replace(
+        () => self.biomes
+      );
+
+      EnvironmentDataService.get_IsVistaMapEnabled.replace(() => self.biomes);
+    }
+
+    if (PersistentPrefs_1.default.get("no_ugly_avatars_pls", false)) {
+      ditto_1.default
+        .use("NeutralAvatarSettingsProto")
+        ["pb::Niantic.Protobuf.IBufferMessage.InternalMergeFrom"].attach({
+          onLeave() {
+            info(color.magenta("Neutral Avatars be gone!"));
+            this[this.$fields[2].fieldName] = false;
+            this[this.$fields[3].fieldName] = 0;
+          },
+        });
+    }
+
+    this.talkToMeWillow = PersistentPrefs_1.default.get(
+      "TalkToMeWillow",
+      false
+    );
+
+    this.skipBadgeAnim = PersistentPrefs_1.default.get(
+      "SkipAwardedBadgeAnim",
+      true
+    );
+
+    this.leekduck = PersistentPrefs_1.default.get("Leekduck", true);
+
+    PogoUtils_1.PogoUtils.addCheatCode("NoSharpObjects", () => {
+      oneLineMedium(I18n_1.default.getText("toast.packSpeed.cheatCode"));
+
+      self.skipVersusScreen = true;
+    });
+
+    PogoUtils_1.PogoUtils.addCheatCode("iHateCampfire", () => {
+      oneLineMedium("Extinguishing the Campfire...");
+      self.extinguishCampfire();
+    });
+
+    PogoUtils_1.PogoUtils.addCheatCode("TalkToMeWillow", () => {
+      oneLineMedium("Dating Sim mode activated.");
+      self.talkToMeWillow = true;
+      PersistentPrefs_1.default.set("TalkToMeWillow", true);
+    });
+
+    PogoUtils_1.PogoUtils.addCheatCode("STFUWILLOW", () => {
+      oneLineMedium("OK :(");
+      self.talkToMeWillow = false;
+      PersistentPrefs_1.default.set("TalkToMeWillow", false);
+    });
+
+    PogoUtils_1.PogoUtils.addCheatCode(
+      "is this a late april fools joke",
+      () => {
+        PersistentPrefs_1.default.set("no_ugly_avatars_pls", true);
+
+        oneLineMedium(I18n_1.default.getText("toast.restartYourGame"));
+      }
+    );
+
+    PogoUtils_1.PogoUtils.addCheatCode("i want my ugly avatar back", () => {
+      PersistentPrefs_1.default.set("no_ugly_avatars_pls", false);
+
+      oneLineMedium(I18n_1.default.getText("toast.restartYourGame"));
+    });
+
+    PogoUtils_1.PogoUtils.addCheatCode("yes biomes", () => {
+      this.biomes = true;
+      PersistentPrefs_1.default.set("force_biomes", true);
+      info(color.white.bgRed(`Set Force-Biomes to ${this.biomes}`));
+
+      oneLineMedium(I18n_1.default.getText("toast.restartYourGame"));
+    });
+
+    PogoUtils_1.PogoUtils.addCheatCode("no biomes", () => {
+      this.biomes = false;
+      PersistentPrefs_1.default.set("force_biomes", false);
+      info(color.cyan(`Set Force-Biomes to ${this.biomes}`));
+
+      oneLineMedium(I18n_1.default.getText("toast.restartYourGame"));
+    });
+
+    PogoUtils_1.PogoUtils.toggles.addToggleToGroup("advanced_settings", {
+      id: "advanced_noDialogSkip",
+      name: "ui.advancedSettings.talkToMeWillow",
+      description: "ui.advancedSettings.talkToMeWillowTip",
+      value: this.talkToMeWillow,
+      callback: (toggle) => {
+        this.talkToMeWillow = toggle.value;
+        PersistentPrefs_1.default.set("TalkToMeWillow", toggle.value);
+      },
+    });
+
+    PogoUtils_1.PogoUtils.toggles.addToggleToGroup("advanced_settings", {
+      id: "advanced_noMetadataAntilag",
+      name: "ui.advancedSettings.preventMetadataLag",
+      description: "ui.advancedSettings.preventMetadataLagTip",
+      value: !!this.getReverseGeocodedAddress,
+      callback: (toggle) => {
+        PersistentPrefs_1.default.set("MetadataAntilagEnabled", toggle.value);
+
+        if (toggle.value) {
+          !this.getReverseGeocodedAddress &&
+            ((this.getReverseGeocodedAddress =
+              this._MapsApi.GetReverseGeocodedAddress.overload("long").replace(
+                () => self.makeStringPromise()
+              )),
+            info(color.gray(`replaced the GetReverseGeocodedAddress<long>`)));
+
+          !this.getReverseGeocodedAddress2 &&
+            ((this.getReverseGeocodedAddress2 =
+              this._MapsApi.GetReverseGeocodedAddress.overload(
+                "Niantic.LatLng"
+              ).replace(() => self.makeStringPromise(self.getRandomPlanet()))),
+            info(
+              color.gray(
+                `replaced the GetReverseGeocodedAddress<Niantic.LatLng>`
+              )
+            ));
+        } else {
+          this.getReverseGeocodedAddress &&
+            (Interceptor.revert(this.getReverseGeocodedAddress),
+            (this.getReverseGeocodedAddress = undefined),
+            info(color.gray(`reverted the GetReverseGeocodedAddress<long>`)));
+
+          this.getReverseGeocodedAddress2 &&
+            (Interceptor.revert(this.getReverseGeocodedAddress2),
+            (this.getReverseGeocodedAddress2 = undefined),
+            info(
+              color.gray(
+                `reverted the GetReverseGeocodedAddress<Niantic.LatLng>`
+              )
+            ));
+        }
+      },
+    });
+
+    PogoUtils_1.PogoUtils.toggles.addToggleToGroup("advanced_settings", {
+      id: "advanced_skipBadgeAnim",
+      name: "ui.advancedSettings.skipMedalToggleName",
+      value: this.skipBadgeAnim,
+      description: "ui.advancedSettings.skipMedalToggleTip",
+      callback: (toggle) => {
+        this.skipBadgeAnim = toggle.value;
+        PersistentPrefs_1.default.set("SkipAwardedBadgeAnim", toggle.value);
+      },
+    });
+
+    PogoUtils_1.PogoUtils.toggles.addToggleToGroup("advanced_settings", {
+      id: "advanced_leekduck",
+      name: "Leekduck",
+      value: this.leekduck,
+      description: "ui.advancedSettings.leekduckToggleDescriptionForDumbUsers",
+      callback: (toggle) => {
+        this.leekduck = toggle.value;
+        PersistentPrefs_1.default.set("Leekduck", toggle.value);
+      },
+    });
+
+    PogoUtils_1.PogoUtils.buttons.addButtonsToGroup("advanced_settings", [
+      {
+        id: "advanced_setTargetFramerate",
+        name: "ui.advancedSettings.setCustomFpsTarget",
+        description: "",
+        callback: () => {
+          const currentTarget = this._Application.get_targetFrameRate();
+          PogoUtils_1.PogoUtils.showWarningModal(
+            I18n_1.default.getText("ui.advancedSettings.setCustomFpsTarget"),
+            `${I18n_1.default.getText(
+              "ui.advancedSettings.currentTarget"
+            )}: ${currentTarget}`,
+            [
+              {
+                name: `${I18n_1.default.getText("common.default")} (30)`,
+                eventType: 1,
+                callback: () => {
+                  this.setTargetFrameRate(30);
+                },
+              },
+              {
+                name: "15",
+                eventType: 3,
+                callback: () => {
+                  this.setTargetFrameRate(15);
+                },
+              },
+              {
+                name: "45",
+                eventType: 4,
+                callback: () => {
+                  this.setTargetFrameRate(45);
+                },
+              },
+              {
+                name: "60",
+                eventType: 5,
+                callback: () => {
+                  this.setTargetFrameRate(60);
+                },
+              },
+              {
+                name: "90",
+                eventType: 6,
+                callback: () => {
+                  this.setTargetFrameRate(90);
+                },
+              },
+              {
+                name: "120",
+                eventType: 7,
+                callback: () => {
+                  this.setTargetFrameRate(120);
+                },
+              },
+              {
+                name: "240",
+                eventType: 8,
+                callback: () => {
+                  this.setTargetFrameRate(240);
+                },
+              },
+              { name: I18n_1.default.getText("common.cancel"), eventType: 2 },
+            ]
+          );
+        },
+      },
+    ]);
+  }
+  extinguishCampfire() {
+    info(color.yellow("Trying to extinguish the Campfire..."));
+    const GeneralSettingsGuiController = ditto_1.default
+      .use(
+        "Niantic.Holoholo.Settings.GuiControllers.GeneralSettingsGuiController"
+      )
+      .$new();
+    GeneralSettingsGuiController.preferences =
+      this.unityPlayerPreferencesStorageInst.value;
+    GeneralSettingsGuiController.ToggleShowCampfire(false);
+  }
+  makeStringPromise(retVal = "Pokemod HQ") {
+    const inflated = this._Promise1.typeof.MakeGenericType([
+      this._String.typeof,
+    ]);
+
+    const constructed = inflated.CreateInstanceDefaultCtor(
+      false,
+      false,
+      false,
+      false,
+      null
+    );
+    constructed.Complete(retVal);
+    return constructed;
+  }
+  setTargetFrameRate(value) {
+    if (value == 30) {
+      this.targetFPS = undefined;
+      PersistentPrefs_1.default.del("target_fps");
+    } else {
+      this.targetFPS = value;
+      PersistentPrefs_1.default.set("target_fps", value);
+    }
+
+    this._Application.set_targetFrameRate(value);
+    info(`Set Target Framerate to ${value}`);
+  }
+  getRandomPlanet() {
+    return this.celestialBodies[
+      Math.floor(Math.random() * this.celestialBodies.length)
+    ];
+  }
+  tryCollectTappable(tappableController) {
+    if (this.tappableTimeout) {
+      clearTimeout(this.tappableTimeout);
+      this.tappableTimeout = undefined;
+    }
+
+    if (tappableController.tappableAction) {
+      info(`Found tappable with ID ${tappableController.tappableID}`);
+
+      tappableController.tappableAction.$has("Invoke")
+        ? tappableController.tappableAction.Invoke(tappableController)
+        : warn(
+            `Unable to collect ${tappableController.tappableID}: class ${tappableController.tappableAction.$className} has no Invoke method`
+          );
+    }
+  }
+  getNiaPromise() {
+    const p = this._Promise.$new();
+    p.Complete();
+    return p;
+  }
+}
+export default FirstAidKit;

@@ -1,0 +1,120 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const chalk_1 = __importDefault(require("chalk"));
+function encodeUtf8(s) {
+  return unescape(encodeURIComponent(s));
+}
+export { encodeUtf8 };
+function decodeUtf8(s) {
+  return decodeURIComponent(escape(s));
+}
+export { decodeUtf8 };
+function ab2str(buf) {
+  const s = String.fromCharCode.apply(null, new Uint8Array(buf));
+  return decodeUtf8(decodeUtf8(s));
+}
+export { ab2str };
+function str2ab(str) {
+  const s = encodeUtf8(str);
+  const buf = new ArrayBuffer(s.length);
+  const bufView = new Uint8Array(buf);
+  for (let i = 0, strLen = s.length; i < strLen; i++) {
+    bufView[i] = s.charCodeAt(i);
+  }
+  return bufView;
+}
+export { str2ab };
+function toUint8(bArr) {
+  const buffer = new Uint8Array(bArr.length);
+  for (let i = 0; i < buffer.length; i++) {
+    buffer[i] = 255 & bArr[i];
+  }
+  return buffer;
+}
+export { toUint8 };
+function toByteArray(uint8) {
+  const buffer = [];
+  for (let i = 0; i < uint8.length; i++) {
+    buffer[i] = (uint8[i] << 24) >> 24;
+  }
+  return Java.array("byte", buffer);
+}
+export { toByteArray };
+function hashCode(s) {
+  return (
+    s.split("").reduce((a, b) => {
+      a = (a << 5) - a + b.charCodeAt(0);
+      return a & a;
+    }, 0) >>> 0
+  );
+}
+export { hashCode };
+let log = (input, color = "white", bold = false, date = true, level = 4) => {
+  let output = date
+    ? `[${new Date().toISOString().replace(/.+T(.+)Z/, "$1")}] `
+    : "";
+
+  output = bold
+    ? `${output}${chalk_1.default[color].bold(input)}`
+    : `${output}${chalk_1.default[color](input)}`;
+
+  console.log(output);
+};
+export { log };
+const toTitleCase = (str) => {
+  const isPascal = str.charAt(0) === str.charAt(0).toUpperCase();
+  const res = str.replace(/([A-Z])/g, " $1");
+  return isPascal ? res.slice(1) : res.charAt(0).toUpperCase() + res.slice(1);
+};
+export { toTitleCase };
+
+export const ItemTable = {
+  1: "ITEM_POKE_BALL",
+  2: "ITEM_GREAT_BALL",
+  3: "ITEM_ULTRA_BALL",
+  5: "ITEM_PREMIER_BALL",
+  101: "ITEM_POTION",
+  102: "ITEM_SUPER_POTION",
+  103: "ITEM_HYPER_POTION",
+  104: "ITEM_MAX_POTION",
+  201: "ITEM_REVIVE",
+  202: "ITEM_MAX_REVIVE",
+  301: "ITEM_LUCKY_EGG",
+  401: "ITEM_INCENSE_ORDINARY",
+  402: "ITEM_INCENSE_SPICY",
+  403: "ITEM_INCENSE_COOL",
+  404: "ITEM_INCENSE_FLORAL",
+  405: "ITEM_INCENSE_BELUGA_BOX",
+  501: "ITEM_TROY_DISK",
+  502: "ITEM_TROY_DISK_GLACIAL",
+  503: "ITEM_TROY_DISK_MOSSY",
+  504: "ITEM_TROY_DISK_MAGNETIC",
+  505: "ITEM_TROY_DISK_RAINY",
+  506: "ITEM_TROY_DISK_SPARKLY",
+  602: "ITEM_X_ATTACK",
+  603: "ITEM_X_DEFENSE",
+  604: "ITEM_X_MIRACLE",
+  701: "ITEM_RAZZ_BERRY",
+  702: "ITEM_BLUK_BERRY",
+  703: "ITEM_NANAB_BERRY",
+  704: "ITEM_WEPAR_BERRY",
+  705: "ITEM_PINAP_BERRY",
+  706: "ITEM_GOLDEN_RAZZ_BERRY",
+  707: "ITEM_GOLDEN_NANAB_BERRY",
+  708: "ITEM_GOLDEN_PINAP_BERRY",
+  709: "ITEM_POFFIN",
+  802: "ITEM_STICKER_INVENTORY",
+  903: "ITEM_INCUBATOR_SUPER",
+  1101: "ITEM_SUN_STONE",
+  1102: "ITEM_KINGS_ROCK",
+  1103: "ITEM_METAL_COAT",
+  1104: "ITEM_DRAGON_SCALE",
+  1105: "ITEM_UP_GRADE",
+  1106: "ITEM_GEN4_EVOLUTION_STONE",
+  1107: "ITEM_GEN5_EVOLUTION_STONE",
+  1201: "ITEM_MOVE_REROLL_FAST_ATTACK",
+  1202: "ITEM_MOVE_REROLL_SPECIAL_ATTACK",
+  1301: "ITEM_RARE_CANDY",
+  1404: "ITEM_STAR_PIECE",
+  1502: "ITEM_LEADER_MAP",
+};

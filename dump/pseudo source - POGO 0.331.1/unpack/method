@@ -1,0 +1,1143 @@
+import { isPrimitive } from "./types";
+export const __esModule = true;
+export { makeCallable };
+const _core = _interopRequireDefault(require("./core"));
+const _factory = _interopRequireDefault(require("./factory"));
+const _obfmap = _interopRequireDefault(require("./obfmap"));
+const _dev_bridge = _interopRequireDefault(require("./utils/dev_bridge"));
+function _interopRequireDefault(obj) {
+  return obj && obj.__esModule ? obj : { default: obj };
+}
+
+const cm = new CModule(`
+#include <gum/guminterceptor.h>;
+
+void replace_arg(GumInvocationContext * ic, guint n, gpointer * val) {
+    gum_invocation_context_replace_nth_argument(ic, n, val);
+}
+void replace_ret(GumInvocationContext * ic, GumInvocationContext * val) {
+    gum_invocation_context_replace_return_value(ic, val);
+}
+`);
+
+const ParsedArgsHandler = {
+  get(target, property) {
+    const index = target.tryParseIndex(property);
+    return index == null ? target[property] : target.readValue(index);
+  },
+  set(target, property, value) {
+    const index = target.tryParseIndex(property);
+    return index == null
+      ? ((target[property] = value), true)
+      : (target.writeValue(index, value), true);
+  },
+};
+
+class ParsedArgs {
+  constructor(ic, invocationArgs, argTypes, methodName) {
+    this.$ic = ic;
+    this.invocationArgs = invocationArgs;
+    this.argTypes = argTypes;
+    this.length = argTypes.length;
+    this.methodName = methodName;
+
+    this.argsReplacer = new NativeFunction(cm.replace_arg, "void", [
+      "pointer",
+      "uint",
+      "pointer",
+    ]);
+
+    return new Proxy(this, ParsedArgsHandler);
+  }
+  tryParseIndex(rawIndex) {
+    if (typeof rawIndex == "symbol") {
+      return null;
+    }
+    const index = parseInt(rawIndex);
+    return isNaN(index) || index < 0 || index >= this.argTypes.length || index;
+  }
+  writeValue(index, value) {
+    const type = this.argTypes[index];
+    if (!type.isCompatible(value) && this.methodName != ".ctor") {
+      error(
+        `${this.methodName}: arg[${index}] = ${value} is not compatible with argtype ${type.name}`
+      );
+
+      return null;
+    }
+    let fridaType = type.toIl2cpp(value);
+
+    if (isPrimitive(type.name)) {
+      fridaType = ptr(fridaType);
+    }
+
+    this.argsReplacer(this.$ic, index + 1, fridaType);
+    this[`args${index}`] = value;
+  }
+  readValue(index) {
+    if (!this[`args${index}`]) {
+      const type = this.argTypes[index];
+      const arg = this.invocationArgs[index];
+      if (
+        this.methodName != ".ctor" &&
+        isPrimitive(type.name) &&
+        arg instanceof NativePointer
+      ) {
+        const addr = Memory.alloc(
+          _core.default.getClassInstanceSize(type.getKlass())
+        );
+        addr.writePointer(arg);
+        this[`args${index}`] = type.fromIl2cpp(type.read(addr));
+      } else {
+        this[`args${index}`] = type.fromIl2cpp(arg);
+      }
+    }
+    return this[`args${index}`];
+  }
+}
+
+export const methodPrototype = Object.create(Function.prototype, {
+  methodName: {
+    get() {
+      if (!this._methodName) {
+        this._methodName = _core.default.getMethodName(this.methodInfo);
+      }
+
+      return this._methodName;
+    },
+  },
+  argsCount: {
+    get() {
+      if (!this._argsCount) {
+        this._argsCount = _core.default.getArgsCount(this.methodInfo);
+      }
+
+      return this._argsCount;
+    },
+  },
+  argNames: {
+    get() {
+      if (!this._argNames) {
+        this._argNames = _core.default.getArgNames(
+          this.methodInfo,
+          this.argsCount
+        );
+      }
+
+      return this._argNames;
+    },
+  },
+  argTypes: {
+    get() {
+      if (!this._argTypes) {
+        this._argTypes = _core.default.getArgTypes(
+          this.methodInfo,
+          this.argsCount
+        );
+      }
+
+      return this._argTypes;
+    },
+  },
+  retType: {
+    get() {
+      if (!this._retType) {
+        this._retType = _core.default.getReturnType(this.methodInfo);
+      }
+
+      return this._retType;
+    },
+  },
+  modifiers: {
+    get() {
+      if (!this._modifiers) {
+        this._modifiers = _core.default.getMethodModifiers(this.methodInfo);
+      }
+
+      return this._modifiers;
+    },
+  },
+  canInvokeWith: {
+    enumerable: true,
+    value(args) {
+      const argTypes = this.argTypes;
+      return (
+        !(args.length !== argTypes.length) &&
+        argTypes.every((t, i) => {
+          const compatibility = t.isCompatible(args[i]);
+          return compatibility;
+        })
+      );
+    },
+  },
+  invokeRaw: {
+    value(receiver, args) {
+      let receiver_$instance = receiver.$instance;
+      const isStatic = this.modifiers.includes("static");
+      const isCtor = this.methodName === ".ctor";
+      const isAbstract = this.modifiers.includes("abstract");
+      if (isAbstract) {
+        error(`Cannot call abstract method :${this.methodName}`);
+        return null;
+      }
+      if (isCtor && !isStatic && !receiver_$instance) {
+        error("Cannot create object using $ctor, Please use $new.");
+        return null;
+      }
+      if (!isStatic && !receiver_$instance) {
+        error(
+          `${this.methodName}: Cannot call instance method without an instance `
+        );
+
+        return null;
+      }
+      const isInstanceStruct = receiver.$isStruct();
+
+      if (isInstanceStruct) {
+        receiver_$instance = _core.default.Unbox(receiver_$instance);
+      }
+
+      const fridaArgs = [];
+      for (let i = 0; i != args.length; i++) {
+        const args_i = args[i];
+        const type = this.argTypes[i];
+        let fridaArg;
+        const isNullable = type.nullable || false;
+
+        fridaArg =
+          isPrimitive(type.name) && !isNullable
+            ? args_i
+            : type.toIl2cpp(args_i);
+
+        fridaArgs.push(fridaArg);
+      }
+      const fridaArgsType = [];
+
+      if (isStatic) {
+        if (receiver_$instance) {
+          fridaArgsType.push("pointer");
+        }
+      } else {
+        fridaArgsType.push("pointer");
+      }
+
+      this.argTypes.forEach((t) => {
+        fridaArgsType.push(t.type);
+      }); // Don't really let it fail
+
+      try {
+        const method = new NativeFunction(
+          this.methodInfo.readPointer(),
+          this.retType.type,
+          fridaArgsType
+        );
+        let retval;
+
+        retval = isStatic
+          ? receiver_$instance
+            ? method(receiver_$instance, ...fridaArgs)
+            : method(...fridaArgs)
+          : method(receiver_$instance, ...fridaArgs);
+
+        if (this.retType.name != "void") {
+          return isPrimitive(this.retType.name)
+            ? this.retType.fromIl2cpp(retval)
+            : this.retType.fromIl2cpp(retval, false);
+        }
+
+        if (isCtor) {
+          if (isInstanceStruct) {
+            receiver_$instance = _core.default.Box(
+              receiver.$klass,
+              receiver_$instance
+            );
+          }
+
+          return _factory.default.cast(receiver_$instance, this.klass);
+        }
+      } catch (e) {
+        const err = new Error(e);
+        err.type = "Dittolib_Invoke";
+        error(err.stack);
+      } finally {
+        let _DevBridge$profiler;
+
+        if (null != (_DevBridge$profiler = _dev_bridge.default.profiler)) {
+          _DevBridge$profiler.endLog(
+            "invoke",
+            receiver.$className,
+            this.methodName,
+            0,
+            receiver_$instance
+          );
+        }
+      }
+    },
+  },
+  invoke: {
+    value(receiver, args) {
+      let receiver_$instance = receiver.$instance;
+      const isStatic = this.modifiers.includes("static");
+      const isCtor = this.methodName === ".ctor";
+
+      if (isStatic) {
+        receiver_$instance = NULL;
+      }
+
+      const isAbstract = this.modifiers.includes("abstract");
+      if (isAbstract) {
+        error(`Cannot call abstract method :${this.methodName}`);
+        return null;
+      }
+      if (isCtor && !isStatic && !receiver_$instance) {
+        error("Cannot create object using $ctor, Please use $new.");
+        return null;
+      }
+      if (!isStatic && !receiver_$instance) {
+        error(
+          `${this.methodName}: Cannot call instance method without an instance `
+        );
+
+        return null;
+      }
+      const isInstanceStruct = receiver.$isStruct();
+
+      if (isInstanceStruct) {
+        receiver_$instance = _core.default.Unbox(receiver_$instance);
+      }
+
+      const fridaArgs = [];
+      for (let i = 0; i != args.length; i++) {
+        const args_i = args[i];
+        const type = this.argTypes[i];
+        let fridaArg;
+        const isNullable = type.nullable || false;
+
+        if (isPrimitive(type.name) && !isNullable) {
+          fridaArg = Memory.alloc(type.size);
+          type.write(fridaArg, type.toIl2cpp(args_i));
+        } else {
+          fridaArg = type.toIl2cpp(args_i);
+        }
+
+        fridaArgs.push(fridaArg);
+      } // Don't really let it fail
+      try {
+        let retval = _core.default.methodInvoke(
+          this.methodInfo,
+          receiver_$instance,
+          fridaArgs
+        );
+        if (this.retType.name != "void") {
+          return isPrimitive(this.retType.name) &&
+            ((retval = _core.default.Unbox(retval)), this.retType.read)
+            ? this.retType.fromIl2cpp(this.retType.read(retval))
+            : this.retType.fromIl2cpp(retval, true);
+        }
+        if (isCtor) {
+          if (isInstanceStruct) {
+            receiver_$instance = _core.default.Box(
+              receiver.$klass,
+              receiver_$instance
+            );
+          }
+
+          return _factory.default.cast(receiver_$instance, this.klass);
+        }
+      } catch (e) {
+        const err = new Error(e);
+        err.type = "Dittolib_Invoke";
+        error(err);
+      } finally {
+        let _DevBridge$profiler2;
+
+        if (null != (_DevBridge$profiler2 = _dev_bridge.default.profiler)) {
+          _DevBridge$profiler2.endLog(
+            "invoke",
+            receiver.$className,
+            this.methodName,
+            0,
+            receiver_$instance
+          );
+        }
+      }
+    },
+  }, // nativeAttach: {
+  //     value(callbacks) {
+  //         callbacks = callbacks || {};
+  //         const address = this.methodInfo.readPointer();
+  //         const isStatic = this.modifiers.includes("static");
+  //         const argTypes = this.argTypes;
+  //         const retType = this.retType;
+  //         const methodName = this.methodName;
+  //         const holderKlass = this.klass;
+  //         const attachCallbacks = {};
+  //         if (callbacks.onEnter) {
+  //             attachCallbacks.onEnter = function (invocationArgs) {
+  //                 const startTimeMs = DevBridge.profiler?.startLog();
+  //                 invocationArgs = invocationArgs || [];
+  //                 const parsedArgs = [];
+  //                 for (let i = 0; i != invocationArgs.length; i++) {
+  //                     const arg = invocationArgs[i];
+  //                     if (i === 0) {
+  //                         if (!isStatic) {
+  //                             this.wrapper = ClassFactory.cast(arg, holderKlass);
+  //                             continue;
+  //                         } else {
+  //                             this.wrapper = ClassFactory.cast(null, holderKlass);
+  //                         }
+  //                     }
+  //                     let type;
+  //                     if (isStatic) {
+  //                         if (i > argTypes.length - 1) break;
+  //                         type = argTypes[i];
+  //                     } else {
+  //                         if (i > argTypes.length) break;
+  //                         type = argTypes[i - 1];
+  //                     }
+  //                     if (methodName != ".ctor" && isPrimitive(type.name)) {
+  //                         const addr = Memory.alloc(Core.getClassInstanceSize(type.getKlass()));
+  //                         addr.writePointer(arg);
+  //                         parsedArgs.push(type.fromIl2cpp(type.read(addr)));
+  //                     } else {
+  //                         parsedArgs.push(type.fromIl2cpp(arg));
+  //                     }
+  //                 }
+  //                 callbacks.onEnter.call(this.wrapper, parsedArgs);
+  //                 DevBridge.profiler?.endLog("nativeAttach_onEnter", this.wrapper.$className, methodName, startTimeMs, this.wrapper.$instance);
+  //             };
+  //         }
+  //         if (callbacks.onLeave) {
+  //             // This ensures that there's a this.wrapper pointing to the object instance
+  //             // wrapper, if for example there's a this.something() at the nativeAttach
+  //             // onLeave, but there is no onEnter() counterpart (which would set this.wrapper)
+  //             if (!callbacks.onEnter) {
+  //                 attachCallbacks.onEnter = function(invocationArgs) {
+  //                     if (!isStatic) {
+  //                         this.wrapper = ClassFactory.cast(invocationArgs[0], holderKlass);
+  //                     } else {
+  //                         this.wrapper = ClassFactory.cast(null, holderKlass);
+  //                     }
+  //                 };
+  //             }
+  //             attachCallbacks.onLeave = function (retval) {
+  //                 const startTimeMs = DevBridge.profiler?.startLog();
+  //                 // Converts native retval to dittolib's (working OK!)
+  //                 let fromIl2CppRetval = retType.fromIl2cpp(retval);
+  //                 if (retType.name != "void" && isPrimitive(retType.name)) {
+  //                     const addr = Memory.alloc(Core.getClassInstanceSize(retType.getKlass()));
+  //                     addr.writePointer(retval);
+  //                     fromIl2CppRetval = retType.fromIl2cpp(retType.read(addr));
+  //                 }
+  //                 const onLeaveRetval = callbacks.onLeave.call(this.wrapper, fromIl2CppRetval);
+  //                 if (retType.name != "void" && onLeaveRetval !== undefined) {
+  //                     if (!retType.isCompatible(onLeaveRetval) && methodName != ".ctor") {
+  //                         error(`${Core.getClassname(holderKlass)}\.${methodName}: return value ${onLeaveRetval} not compatible with return type ${retType.name}`);
+  //                         return null;
+  //                     }
+  //                     const ret = retType.toIl2cpp(onLeaveRetval);
+  //                     retval.replace(ret);
+  //                 }
+  //                 DevBridge.profiler?.endLog("nativeAttach_onLeave", this.wrapper.$className, methodName, startTimeMs);
+  //             };
+  //         }
+  //         const unObfsmethodName = ObfuscationMap.getUnObfuscated(this.methodName);
+  //         // setImmediate(() => {
+  //         // Script.nextTick(() => {
+  //         for (let attempt = 1; attempt <= 200; ++attempt) { // 20 seconds
+  //             // if (attempt > 1) await delay(200);
+  //             if (attempt > 1) Thread.sleep(0.1);
+  //             try {
+  //                 const retval = Interceptor.attach(address, attachCallbacks);
+  //                 if (attempt > 1) warn(color.green(`successfully intercepted ${address} (${unObfsmethodName}) after ${attempt} tries.`));
+  //                 return retval;
+  //             } catch (e) {
+  //                 if (e.message.indexOf("unable to intercept function") == 0) {
+  //                     if (attempt % 20 === 0) warn(`couldn't attach to ${address} (${unObfsmethodName}). will retry.`);
+  //                 } else if (e.message.indexOf("already replaced this function") == 0) {
+  //                     warn(`already replaced function at ${address} (${unObfsmethodName})!`);
+  //                     return address;
+  //                 } else {
+  //                     throw e;
+  //                 }
+  //             }
+  //         }
+  //         throw new Error(`couldn't intercept ${address} (${unObfsmethodName}). ran out of attempts.`);
+  //         // });
+  //     },
+  // },
+  probe: {
+    value(callback, dispose = true) {
+      const address = this.methodInfo.readPointer();
+      let interceptor;
+
+      const cModule = new CModule(
+        `
+            #include <gum/guminterceptor.h>
+
+            extern void handle_C_callback (const char * ptr);
+
+
+            void
+            onEnter (GumInvocationContext * ic)
+            {
+              const char * ptr;
+
+              ptr = gum_invocation_context_get_nth_argument (ic, 0);
+
+              handle_C_callback(ptr);
+            }
+
+          `,
+        {
+          handle_C_callback: new NativeCallback(
+            (invocationPointer) => {
+              if (dispose) {
+                interceptor.detach();
+              }
+
+              callback(invocationPointer);
+            },
+            "void",
+            ["pointer"]
+          ),
+        }
+      );
+
+      const methodName = _obfmap.default.getUnObfuscated(this.methodName);
+      for (let attempt = 1; attempt <= 200; ++attempt) {
+        if (attempt > 1) {
+          Thread.sleep(0.1);
+        }
+
+        try {
+          interceptor = Interceptor.attach(address, cModule);
+
+          if (attempt > 1) {
+            warn(
+              color.green(
+                `successfully intercepted ${address} (${methodName}) after ${attempt} tries.`
+              )
+            );
+          }
+
+          return interceptor;
+        } catch (e) {
+          if (e.message.indexOf("unable to intercept function") == 0) {
+            if (0 == attempt % 20) {
+              warn(
+                `couldn't attach to ${address} (${methodName}). will retry.`
+              );
+            }
+          } else {
+            if (e.message.indexOf("already replaced this function") == 0) {
+              warn(`already replaced function at ${address} (${methodName})!`);
+
+              return address;
+            }
+            throw e;
+          }
+        }
+      }
+      throw new Error(
+        `couldn't intercept ${address} (${methodName}). ran out of attempts.`
+      );
+    },
+  },
+  attach: {
+    value(callbacks) {
+      callbacks = callbacks || {};
+      const address = this.methodInfo.readPointer();
+      const isStatic = this.modifiers.includes("static");
+      const argTypes = this.argTypes;
+      const retType = this.retType;
+      const methodName = this.methodName;
+      const holderKlass = this.klass;
+      const objectHolder = { wrapper: null };
+      const onEnterArgTypes = ["pointer"];
+
+      if (!isStatic) {
+        onEnterArgTypes.push("pointer");
+      }
+
+      let interceptor;
+      let cstringToCompile = "";
+      if (callbacks.onEnter) {
+        let hasArgs = !!callbacks.onEnter.length;
+
+        if (hasArgs && argTypes.length > 0) {
+          argTypes.forEach((arg) => {
+            onEnterArgTypes.push(arg.type);
+          });
+        } else if (hasArgs && argTypes.length <= 0) {
+          warn(
+            `${methodName} dosen't take any args, but looks like you're trying to access it`
+          );
+
+          hasArgs = false;
+        }
+
+        cstringToCompile += `
+                extern void handle_OnEnter (GumInvocationContext * ic, char* ptr${
+                  hasArgs
+                    ? `, ${argTypes
+                        .map((_, index) => `char* arg${index}`)
+                        .toString()}`
+                    : ""
+                });
+                void onEnter (GumInvocationContext * ic)
+                    {
+                        char * ptr;
+                        ptr = gum_invocation_context_get_nth_argument (ic, 0);
+
+                        handle_OnEnter(ic, ptr${
+                          hasArgs
+                            ? `, ${argTypes.map(
+                                (_, idx) =>
+                                  `gum_invocation_context_get_nth_argument (ic, ${
+                                    idx + 1
+                                  })`
+                              )}`
+                            : ""
+                        });
+
+                    }
+
+                `;
+      }
+
+      if (callbacks.onLeave && !callbacks.onEnter && methodName !== ".ctor") {
+        cstringToCompile += `
+                  extern void handle_OnEnter_L (char * ptr);
+                  void onEnter (GumInvocationContext * ic)
+                      {
+                          char * ptr;
+
+                          ptr = gum_invocation_context_get_nth_argument (ic, 0);
+
+                          handle_OnEnter_L(ptr);
+                      }
+
+                  `;
+      }
+
+      if (callbacks.onLeave) {
+        cstringToCompile += `
+                \n
+                    extern void handle_OnLeave (GumInvocationContext *ic, GumInvocationContext * retval);
+
+                    void onLeave (GumInvocationContext * ic)
+                    {
+                        handle_OnLeave(ic, gum_invocation_context_get_return_value(ic));
+
+                    }
+
+                `;
+      }
+
+      const cModule = new CModule(
+        `
+            #include <gum/guminterceptor.h>
+
+            ${cstringToCompile}
+
+          `,
+        {
+          handle_OnEnter: new NativeCallback(
+            (ic, invocationPtr, ...args) => {
+              let _DevBridge$profiler3;
+              let _DevBridge$profiler4;
+              const startTimeMs =
+                null == (_DevBridge$profiler3 = _dev_bridge.default.profiler) ||
+                _DevBridge$profiler3.startLog();
+
+              if (isStatic) {
+                objectHolder.wrapper = _factory.default.cast(null, holderKlass);
+
+                args.unshift(invocationPtr);
+              } else {
+                objectHolder.wrapper = _factory.default.cast(
+                  invocationPtr,
+                  holderKlass
+                );
+              }
+
+              callbacks.onEnter.call(
+                objectHolder.wrapper,
+                new ParsedArgs(ic, args, argTypes, methodName)
+              );
+
+              if (
+                null != (_DevBridge$profiler4 = _dev_bridge.default.profiler)
+              ) {
+                _DevBridge$profiler4.endLog(
+                  "onEnter",
+                  objectHolder.wrapper.$className,
+                  methodName,
+                  startTimeMs,
+                  objectHolder.wrapper.$instance
+                );
+              }
+            },
+            "void",
+            onEnterArgTypes
+          ),
+          handle_OnEnter_L: new NativeCallback(
+            (invocationPtr) => {
+              objectHolder.wrapper = isStatic
+                ? _factory.default.cast(null, holderKlass)
+                : _factory.default.cast(invocationPtr, holderKlass);
+            },
+            "void",
+            ["pointer"]
+          ),
+          handle_OnLeave: new NativeCallback(
+            (ic, retval) => {
+              let _DevBridge$profiler5;
+              let _DevBridge$profiler6;
+              const startTimeMs =
+                null == (_DevBridge$profiler5 = _dev_bridge.default.profiler) ||
+                _DevBridge$profiler5.startLog();
+              if (methodName === ".ctor" && !retval.isNull()) {
+                objectHolder.wrapper = _factory.default.cast(
+                  retval,
+                  holderKlass
+                );
+
+                return void callbacks.onLeave.call(
+                  objectHolder.wrapper,
+                  objectHolder.wrapper
+                );
+              }
+              let fromIl2CppRetval;
+              if (
+                callbacks.onLeave.length &&
+                ((fromIl2CppRetval = retType.fromIl2cpp(retval)),
+                methodName !== ".ctor" ||
+                  retval.isNull() ||
+                  retval.isNull() ||
+                  _factory.default.cast(retval, holderKlass),
+                retType.name != "void" &&
+                  isPrimitive(retType.name) &&
+                  retval instanceof NativePointer)
+              ) {
+                const addr = Memory.alloc(
+                  _core.default.getClassInstanceSize(retType.getKlass())
+                );
+                addr.writePointer(retval);
+
+                fromIl2CppRetval = retType.fromIl2cpp(retType.read(addr));
+              }
+              const onLeaveRetval = callbacks.onLeave.call(
+                objectHolder.wrapper,
+                fromIl2CppRetval
+              );
+              let ret = NULL;
+              if (retType.name != "void" && onLeaveRetval !== undefined) {
+                if (
+                  !retType.isCompatible(onLeaveRetval) &&
+                  methodName != ".ctor"
+                ) {
+                  error(
+                    `${_core.default.getClassNameFromMethodInfo(
+                      this.methodInfo
+                    )}\.${methodName}: return value ${onLeaveRetval} not compatible with return type ${
+                      retType.name
+                    }`
+                  );
+
+                  return null;
+                }
+                ret = retType.toIl2cpp(onLeaveRetval);
+
+                if (isPrimitive(retType.name)) {
+                  ret = ptr(ret);
+                }
+
+                const cb = new NativeFunction(cm.replace_ret, "void", [
+                  "pointer",
+                  "pointer",
+                ]);
+                cb(ic, ret);
+              }
+
+              if (
+                null != (_DevBridge$profiler6 = _dev_bridge.default.profiler)
+              ) {
+                _DevBridge$profiler6.endLog(
+                  "onLeave",
+                  objectHolder.wrapper.$className,
+                  methodName,
+                  startTimeMs,
+                  objectHolder.wrapper.$instance
+                );
+              }
+            },
+            "void",
+            ["pointer", "pointer"]
+          ),
+        }
+      );
+
+      const unbfmethodName = _obfmap.default.getUnObfuscated(methodName);
+      for (let attempt = 1; attempt <= 200; ++attempt) {
+        if (attempt > 1) {
+          Thread.sleep(0.1);
+        }
+
+        try {
+          interceptor = Interceptor.attach(address, cModule);
+
+          if (attempt > 1) {
+            warn(
+              color.green(
+                `successfully intercepted ${address} (${unbfmethodName}) after ${attempt} tries.`
+              )
+            );
+          }
+
+          return interceptor;
+        } catch (e) {
+          if (e.message.indexOf("unable to intercept function") == 0) {
+            warn(
+              `couldn't attach to ${address} (${unbfmethodName}). will retry.`
+            );
+          } else {
+            if (e.message.indexOf("already replaced this function") == 0) {
+              warn(
+                `already replaced function at ${address} (${unbfmethodName})!`
+              );
+
+              return address;
+            }
+            error(e + `\non ${address} (${this.klass} ${unbfmethodName})`);
+          }
+        }
+      }
+      return interceptor;
+    },
+  }, // attach: {
+  //     value(callbacks) {
+  //         callbacks = callbacks || {};
+  //         const methodName = this.methodName;
+  //         return this.replace(function(...args) {
+  //             args = args || [];
+  //             if (callbacks.onEnter) {
+  //                 callbacks.onEnter.call(this, args);
+  //             }
+  //             // Requires spread operator below
+  //             const result = this[methodName](...args);
+  //             if (callbacks.onLeave) {
+  //                 const retval = callbacks.onLeave.call(this, result);
+  //                 if (retval !== undefined) {
+  //                     return retval;
+  //                 }
+  //             }
+  //             return result;
+  //         });
+  //     },
+  // },
+  replace: {
+    value(replacement) {
+      const fridaRetType = this.retType.type;
+      const fridaArgsType = [];
+      const isStatic = this.modifiers.includes("static");
+
+      if (!isStatic) {
+        fridaArgsType.push("pointer");
+      }
+
+      this.argTypes.forEach((t) => {
+        fridaArgsType.push(t.type);
+      });
+
+      const argTypes = this.argTypes;
+      const retType = this.retType;
+      const methodName = this.methodName;
+      const holderKlass = this.klass;
+
+      const callback = new NativeCallback(
+        (...args) => {
+          let _DevBridge$profiler7;
+          let _DevBridge$profiler8;
+
+          const startTimeMs =
+            null == (_DevBridge$profiler7 = _dev_bridge.default.profiler) ||
+            _DevBridge$profiler7.startLog();
+
+          const parsedArgs = [];
+          let wrapper;
+          for (let i = 0; i != args.length; i++) {
+            const args_i = args[i];
+            if (i == 0) {
+              if (!isStatic) {
+                wrapper = _factory.default.cast(args_i, holderKlass);
+                continue;
+              } else {
+                wrapper = _factory.default.cast(null, holderKlass);
+              }
+            }
+            let type = isStatic ? argTypes[i] : argTypes[i - 1];
+            const parsedArg = type.fromIl2cpp(args_i);
+            parsedArgs.push(parsedArg);
+          }
+          const bound_replacement = replacement.bind(wrapper);
+          const retval = bound_replacement(...parsedArgs);
+          if (!retType.isCompatible(retval) && methodName != ".ctor") {
+            error(
+              `${_core.default.getClassname(
+                holderKlass
+              )}\.${methodName}: return value ${retval} not compatible with return type ${
+                retType.name
+              }`
+            );
+
+            return null;
+          }
+          const ret = retType.toIl2cpp(retval);
+
+          if (null != (_DevBridge$profiler8 = _dev_bridge.default.profiler)) {
+            _DevBridge$profiler8.endLog(
+              "replace",
+              wrapper.$className,
+              methodName,
+              startTimeMs,
+              wrapper.$instance
+            );
+          }
+
+          return ret;
+        },
+        fridaRetType,
+        fridaArgsType
+      );
+
+      const address = this.methodInfo.readPointer();
+      const unobfMethodName = _obfmap.default.getUnObfuscated(methodName); // setImmediate(() => {
+      for (let attempt = 1; attempt <= 200; ++attempt) {
+        if (attempt > 1) {
+          Thread.sleep(0.1);
+        }
+
+        try {
+          Interceptor.replace(address, callback);
+
+          if (attempt > 1) {
+            warn(
+              color.green(
+                `successfully intercepted ${address} (${unobfMethodName}) after ${attempt} tries.`
+              )
+            );
+          }
+
+          return address;
+        } catch (e) {
+          if (e.message.indexOf("unable to intercept function") == 0) {
+            if (0 == attempt % 20) {
+              warn(
+                `couldn't replace ${address} (${unobfMethodName}). will retry.`
+              );
+            }
+          } else {
+            if (e.message.indexOf("already replaced this function") == 0) {
+              warn(
+                `already replaced function at ${address} (${unobfMethodName})!`
+              );
+
+              return address;
+            }
+            throw e;
+          }
+        }
+      }
+      throw new Error(
+        `couldn't intercept ${address} (${unobfMethodName}). ran out of attempts.`
+      ); // });
+    },
+  },
+});
+
+export const dispatcherPrototype = Object.create(Function.prototype, {
+  overloads: {
+    enumerable: true,
+    get() {
+      return this._overloads;
+    },
+  },
+  overload: {
+    value(...args) {
+      const overloads = this._overloads;
+      const args_length = args.length;
+      const signature = args.join(":");
+      for (let i = 0; i !== overloads.length; i++) {
+        const overloads_i = overloads[i];
+        const overloads_i_argTypes = overloads_i.argTypes;
+        if (overloads_i_argTypes.length !== args_length) {
+          continue;
+        }
+        const s = overloads_i_argTypes
+          .map((t) => _obfmap.default.getUnObfuscated(t.name))
+          .join(":");
+        if (s === signature) {
+          return overloads_i;
+        }
+      }
+      throwOverloadError(
+        this.methodName,
+        this.overloads,
+        "specified argument types do not match any of:"
+      );
+    },
+  },
+  methodInfo: {
+    enumerable: true,
+    get() {
+      throwIfDispatcherAmbiguous(this);
+      return this._overloads[0].methodInfo;
+    },
+  },
+  methodName: {
+    enumerable: true,
+    get() {
+      return this._overloads[0].methodName;
+    },
+  },
+  invokeRaw: {
+    value(receiver, args) {
+      const overloads = this._overloads;
+      for (let i = 0; i !== overloads.length; i++) {
+        const overloads_i = overloads[i];
+        if (overloads_i.canInvokeWith(args)) {
+          return overloads_i.invokeRaw(receiver, args);
+        }
+      }
+      throwOverloadError(
+        `${receiver.$className}.${this.methodName}`,
+        this.overloads,
+        "argument types do not match any of:"
+      );
+    },
+  },
+  invoke: {
+    value(receiver, args) {
+      const overloads = this._overloads;
+      for (let i = 0; i !== overloads.length; i++) {
+        const overloads_i = overloads[i];
+        if (overloads_i.canInvokeWith(args)) {
+          return overloads_i.apply(receiver, args);
+        }
+      }
+      throwOverloadError(
+        `${receiver.$className}.${this.methodName}`,
+        this.overloads,
+        "argument types do not match any of:"
+      );
+    },
+  },
+  retType: {
+    enumerable: true,
+    get() {
+      return this._overloads[0].returnType;
+    },
+  },
+  argTypes: {
+    enumerable: true,
+    get() {
+      throwIfDispatcherAmbiguous(this);
+      return this._overloads[0].argTypes;
+    },
+  },
+  argNames: {
+    enumerable: true,
+    get() {
+      throwIfDispatcherAmbiguous(this);
+      return this._overloads[0].argNames;
+    },
+  },
+  canInvokeWith: {
+    enumerable: true,
+    value(...args) {
+      throwIfDispatcherAmbiguous(this);
+      return this._overloads[0].canInvokeWith(args);
+    },
+  },
+  probe: {
+    value(callback, dispose = true) {
+      throwIfDispatcherAmbiguous(this);
+
+      return this._overloads[0].probe((instancePtr) => {
+        const instanceWrapper = _factory.default.cast(instancePtr, this.klass);
+        callback(instanceWrapper);
+      }, dispose);
+    },
+  },
+  attach: {
+    value(callbacks) {
+      throwIfDispatcherAmbiguous(this);
+      return this._overloads[0].attach(callbacks);
+    },
+  }, // attachC: {
+  //     value(callbacks) {
+  //         throwIfDispatcherAmbiguous(this);
+  //         return this._overloads[0].attachC(callbacks);
+  //     },
+  // },
+  // nativeAttach: {
+  //     value(callbacks) {
+  //         throwIfDispatcherAmbiguous(this);
+  //         return this._overloads[0].nativeAttach(callbacks);
+  //     },
+  // },
+  replace: {
+    value(replacement) {
+      throwIfDispatcherAmbiguous(this);
+      return this._overloads[0].replace(replacement);
+    },
+  },
+  klass: {
+    enumerable: true,
+    get() {
+      return this._overloads[0].klass;
+    },
+  },
+});
+
+function makeCallable() {
+  const method = function (...args) {
+    // eslint-disable-next-line prefer-rest-params
+    return method.invoke(this, args);
+  };
+  return method;
+}
+function throwOverloadError(name, methods, message) {
+  const methodsSortedByArity = methods
+    .slice()
+    .sort((a, b) => a.argTypes.length - b.argTypes.length);
+
+  const overloads = methodsSortedByArity.map((m) => {
+    const m_argTypes = m.argTypes;
+    return m_argTypes.length > 0
+      ? `.overload("${m.argTypes
+          .map((t) => _obfmap.default.getUnObfuscated(t.name))
+          .join('", "')}")`
+      : ".overload()";
+  });
+
+  name = _obfmap.default.getUnObfuscated(name);
+  const klassName = _core.default.getClassname(methods[0].klass);
+  error(`${klassName}.${name}(): ${message}\n\t${overloads.join("\n\t")}`);
+  throw Error(
+    `${klassName}.${name}(): ${message}\n\t${overloads.join("\n\t")}`
+  );
+}
+function throwIfDispatcherAmbiguous(dispatcher) {
+  const dispatcher_overloads = dispatcher._overloads;
+
+  if (dispatcher_overloads.length > 1) {
+    throwOverloadError(
+      dispatcher_overloads[0].methodName,
+      dispatcher_overloads,
+      "has more than one overload, use .overload(<signature>) to choose from:"
+    );
+  }
+}

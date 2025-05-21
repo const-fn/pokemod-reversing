@@ -1,0 +1,261 @@
+import ModuleBase_1 from "../utils/ModuleBase";
+import { oneLine } from "../utils/Toast";
+import PogoUtils_1 from "../utils/PogoUtils";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const I18n_1 = __importDefault(require("../utils/I18n"));
+const ObjectInstance_1 = __importDefault(require("../utils/ObjectInstance"));
+const PersistentPrefs_1 = __importDefault(require("../utils/PersistentPrefs"));
+const UserData_1 = __importDefault(require("../utils/UserData"));
+
+const EnhancedRadarPositioning_1 = __importDefault(
+  require("./EnhancedRadarPositioning")
+);
+
+const combatPartyInstance = new ObjectInstance_1.default(
+  "Niantic.Holoholo.Combat.PokemonPartyState.CombatPokemonPartyWidget"
+);
+
+const NPC = [
+  500, 501, 502, 503, 504, 505, 506, 507, 508, 509, 510, 511, 512, 513, 514,
+  515, 516, 517, 518, 519, 520, 521, 522, 523,
+];
+
+class TeamRocket extends ModuleBase_1.CombatModule {
+  constructor() {
+    super();
+    this.combatType = null;
+    this.ItemBagInstance = null;
+    this._Object = undefined;
+    this._CombatQuestPokemonProto = undefined;
+    this.opponent = undefined;
+    this.battleTs = [];
+    this.currentPlayerName = "";
+  }
+  init() {
+    super.init();
+    this._Object = ditto_1.default.use("UnityEngine.Object");
+
+    this._CombatQuestPokemonProto = ditto_1.default.use(
+      "CombatQuestPokemonProto"
+    );
+
+    this.ItemBagInstance = new ObjectInstance_1.default("ItemBagImpl");
+    const self = this;
+    const IncidentRpcService = ditto_1.default.use("IncidentRpcService");
+    IncidentRpcService.UpdateInvasionBattle.attach({
+      onEnter(args) {
+        if (args[0].updateType_ == 2) {
+          args[0].completeBattle_ = false;
+          args[0].updateType_ = 1;
+        }
+
+        if (args[0].updateType_ == 1) {
+          let _args$0$combatQuestUp;
+          let _self$opponent;
+          let _self$opponent$reserv;
+
+          if (
+            0 ==
+            (null == (_args$0$combatQuestUp = args[0].combatQuestUpdate_) ||
+              _args$0$combatQuestUp.superEffectiveChargedAttacksUpdate_)
+          ) {
+            args[0].combatQuestUpdate_.superEffectiveChargedAttacksUpdate_ =
+              Math.floor(4 * Math.random());
+          }
+
+          if (
+            null != (_self$opponent = self.opponent) &&
+            null != (_self$opponent$reserv = _self$opponent.reservePokemon_) &&
+            _self$opponent$reserv.array
+          ) {
+            const firstMon = self._CombatQuestPokemonProto.$new();
+            firstMon.pokemonId_ = self.opponent.activePokemon_.pokemonId_;
+            firstMon.pokedexId_ = self.opponent.activePokemon_.pokedexId_;
+            args[0].combatQuestUpdate_.faintedOpponentPokemon_.Add(firstMon);
+
+            self.opponent.reservePokemon_.array.forEach(
+              (combatPokemonProto) => {
+                if (combatPokemonProto) {
+                  const reservedMon = self._CombatQuestPokemonProto.$new();
+                  reservedMon.pokemonId_ = combatPokemonProto.pokemonId_;
+                  reservedMon.pokedexId_ = combatPokemonProto.pokedexId_;
+
+                  args[0].combatQuestUpdate_.faintedOpponentPokemon_.Add(
+                    reservedMon
+                  );
+                }
+              }
+            );
+
+            self.opponent = undefined;
+          }
+        }
+      },
+    });
+    const CombatDirectorV2 = ditto_1.default.use(
+      "Niantic.Holoholo.Combat.CombatDirectorV2"
+    );
+    CombatDirectorV2.Initialize.attach({
+      onLeave() {
+        self.combatType = this.combatType_;
+
+        if (this.combatType_ == 5) {
+          this.combatProto_.combatState_ = 6;
+        }
+      },
+    });
+    const CombatStage = ditto_1.default.use(
+      "Niantic.Holoholo.Combat.Stage.CombatStage"
+    );
+    CombatStage.ShowPokemonAndShadow.replace(function (pokemon, show) {
+      return self.combatType != 5 && pokemon
+        ? void this.ShowPokemonAndShadow(pokemon, show)
+        : void (self.combatType = null);
+    });
+    const IncidentService = ditto_1.default.use(
+      "Niantic.Holoholo.Incident.IncidentService"
+    );
+    IncidentService.ProcessIncidentEndOfCombatData.replace(function (
+      combatResult,
+      playerFinishState,
+      remainingPokemon,
+      mapFragmentUpgraded
+    ) {
+      if (self.currentPlayerName != UserData_1.default.username) {
+        info(
+          `[Rocket Blastoff] User has changed "${self.currentPlayerName}" -> "${UserData_1.default.username}"`
+        );
+
+        self.currentPlayerName = UserData_1.default.username;
+
+        self.battleTs = PersistentPrefs_1.default.get(
+          `${self.currentPlayerName}_battle_ts`,
+          [],
+          "Rockets"
+        );
+      }
+
+      const ts = Date.now();
+      const newBattleTs = [];
+
+      self.battleTs.forEach((bts) => {
+        if (bts > ts - 1800000 /* 18e5 */) {
+          newBattleTs.push(bts);
+        }
+      });
+
+      newBattleTs.push(ts);
+      self.battleTs = newBattleTs;
+
+      PersistentPrefs_1.default.set(
+        `${self.currentPlayerName}_battle_ts`,
+        self.battleTs,
+        "Rockets"
+      );
+
+      if (self.battleTs.length >= 30) {
+        warn(
+          `[Rocket Blastoff] User "${self.currentPlayerName}" did too many grunts (${self.battleTs.length}) in last 30 min.`
+        );
+
+        PogoUtils_1.PogoUtils.showWarningModal(
+          I18n_1.default.getText("common.alert"),
+          I18n_1.default.getText("modals.teamRocket.rateLimited"),
+          [
+            {
+              name: I18n_1.default.getText("common.ackWarning"),
+              eventType: 1,
+            },
+          ]
+        );
+
+        ditto_1.default.Telemetry._sendTelemetry({
+          type: "usage",
+          date: new Date().toISOString(),
+          source: "flagged_rocket_modal",
+          reference_id: self.currentPlayerName,
+        });
+      }
+
+      const CurrentCharacter = this.get_CurrentBattleCharacter();
+      const isNPC = NPC.includes(CurrentCharacter);
+
+      const retval = this.ProcessIncidentEndOfCombatData(
+        combatResult,
+        1,
+        remainingPokemon,
+        mapFragmentUpgraded
+      );
+
+      return isNPC ? retval : (this.StartIncidentEncounter(), retval);
+    });
+    const IncidentCombatResolveGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.Incident.IncidentCombatResolveGuiController"
+    );
+
+    IncidentCombatResolveGuiController.CompleteInitialization.attach({
+      onLeave() {
+        this.DoneButtonClicked();
+      },
+    });
+
+    IncidentService.StartDialogue.replace(function () {
+      this.CompletePokestopDialogue();
+    });
+
+    const ItemFragmentAssemblyModalGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.UI.ItemFragmentAssemblyModalGuiController"
+    );
+    ItemFragmentAssemblyModalGuiController.Initialize.replace(function (
+      FragmentGuiConfig
+    ) {
+      const item = FragmentGuiConfig == null || FragmentGuiConfig.ItemToShow;
+      info(color.gray(`Skipping ItemFragmentAssemblyModal with item: ${item}`));
+
+      if (item && item != 1505) {
+        self.ItemBagInstance.value.SetItemEquipped(item, true, true);
+      }
+
+      const guiGO = this.base.base.base.base.base.get_gameObject();
+      self._Object.Destroy(guiGO);
+    });
+    const NpcTrainerInterstitialGui = ditto_1.default.use(
+      "Niantic.Holoholo.Combat.NpcTrainers.NpcTrainerInterstitialGui"
+    );
+    NpcTrainerInterstitialGui.OnDestroy.attach({
+      onLeave() {
+        if (combatPartyInstance.getCurrentValue()) {
+          combatPartyInstance.value.SubmitButtonPressed();
+        }
+      },
+    });
+    const CombatPokemonPartyWidget = ditto_1.default.use(
+      "Niantic.Holoholo.Combat.PokemonPartyState.CombatPokemonPartyWidget"
+    );
+    CombatPokemonPartyWidget.SelectInventory.attach({
+      onEnter() {
+        combatPartyInstance.value = this;
+
+        oneLine(I18n_1.default.getText("toast.teamRocket.easterEgg"));
+      },
+    });
+    const OpenInvasionCombatSessionOutProto = ditto_1.default.use(
+      "OpenInvasionCombatSessionOutProto"
+    );
+
+    OpenInvasionCombatSessionOutProto[
+      "pb::Niantic.Protobuf.IBufferMessage.InternalMergeFrom"
+    ].attach({
+      onLeave() {
+        let _this$combat_;
+        self.opponent =
+          null == (_this$combat_ = this.combat_) || _this$combat_.opponent_;
+      },
+    });
+
+    new EnhancedRadarPositioning_1.default().init();
+  }
+}
+export default TeamRocket;

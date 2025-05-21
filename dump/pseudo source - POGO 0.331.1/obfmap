@@ -1,0 +1,51 @@
+export const __esModule = true;
+class ObfuscationMap {
+  static lex_to_obf = {};
+  static obf_to_lex = {};
+  static set(o) {
+    if (o) {
+      ObfuscationMap.lex_to_obf = Object.assign(ObfuscationMap.lex_to_obf, o);
+
+      for (const key in o) {
+        if (o.hasOwnProperty(key)) {
+          ObfuscationMap.obf_to_lex[o[key]] = key;
+        }
+      }
+    }
+  }
+  static getObfuscated(name) {
+    if (ObfuscationMap.lex_to_obf[name] != null) {
+      return ObfuscationMap.lex_to_obf[name];
+    }
+    const parts = `${name}`.split(/\b/g);
+    for (let i = 0; i < parts.length; i++) {
+      if (ObfuscationMap.lex_to_obf[parts[i]] != null) {
+        parts[i] = ObfuscationMap.lex_to_obf[parts[i]];
+      }
+    }
+    name = parts.join("");
+    return name;
+  }
+  static getUnObfuscated(name) {
+    if (ObfuscationMap.obf_to_lex[name] != null) {
+      return ObfuscationMap.obf_to_lex[name];
+    }
+    const parts = `${name}`.split(/\b/g);
+    for (let i = 0; i < parts.length; i++) {
+      if (ObfuscationMap.obf_to_lex[parts[i]] != null) {
+        parts[i] = ObfuscationMap.obf_to_lex[parts[i]];
+      }
+    }
+    name = parts.join("");
+    return name;
+  }
+  static getPrettyString(name) {
+    const unobName = ObfuscationMap.getUnObfuscated(name);
+    if (name != unobName) {
+      return `${name} (${unobName})`;
+    }
+    const obfName = ObfuscationMap.getObfuscated(name);
+    return name == obfName ? name : `${obfName} (${name})`;
+  }
+}
+export default ObfuscationMap;

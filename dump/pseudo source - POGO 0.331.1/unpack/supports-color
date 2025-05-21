@@ -1,0 +1,5 @@
+const caps = { level: 3, hasBasic: true, has256: true, has16m: true };
+function supportsColor() {
+  return caps;
+}
+export default { supportsColor, stdout: caps, stderr: caps };

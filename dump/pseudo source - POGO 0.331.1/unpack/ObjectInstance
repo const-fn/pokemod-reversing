@@ -1,0 +1,105 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+class ObjectInstance {
+  constructor(className, methodName, disposeInterceptors = true) {
+    this._listeners = new Map();
+    this._className = "";
+    this._disposeInterceptors = true;
+    this._className = className;
+    this._disposeInterceptors = disposeInterceptors;
+
+    if (methodName) {
+      this.addNewInterceptor(methodName);
+    }
+  }
+  addNewInterceptor(methodName) {
+    if (
+      ObjectInstance.hooks.has(this._className) &&
+      !this._disposeInterceptors
+    ) {
+      return void info(
+        color.red.bold(
+          `[ObjectInstance] An instance grabbing hook for ${this._className} already exists`
+        )
+      );
+    }
+    const newHook = () => {
+      const listner = ditto_1.default
+        .use(this._className)
+        [methodName].probe((wrapper) => {
+          ObjectInstance.klassInstances.set(this._className, wrapper);
+
+          if (this._disposeInterceptors) {
+            this.detachAllInterceptors();
+          }
+        }, this._disposeInterceptors);
+
+      if (this._disposeInterceptors) {
+        this._listeners.set(methodName, listner);
+      }
+    };
+    newHook();
+
+    if (this._disposeInterceptors) {
+      ObjectInstance.hooks.set(this._className, newHook);
+    }
+  }
+  get listeners() {
+    return this._listeners;
+  }
+  set listeners(value) {
+    this._listeners = value;
+  }
+  get value() {
+    const hasInstance = ObjectInstance.klassInstances.has(this._className);
+    if (!hasInstance) {
+      const objects = ditto_1.default.choose(this._className);
+      if (objects.length == 0) {
+        info(
+          color.red.bold(
+            `[ObjectInstance] ${this._className} instance: No objects found in memory, returning null!`
+          )
+        );
+
+        return null;
+      }
+      ObjectInstance.klassInstances.set(this._className, objects[0]);
+    }
+    return ObjectInstance.klassInstances.get(this._className);
+  }
+  set value(value) {
+    if (this._listeners.size > 0) {
+      this.detachAllInterceptors();
+    }
+
+    ObjectInstance.klassInstances.set(this._className, value);
+  }
+  detachAllInterceptors() {
+    this._listeners.forEach((listener) => {
+      try {
+        listener.detach();
+      } catch (e) {
+        error("error");
+      }
+    });
+  }
+  getCurrentValue() {
+    return ObjectInstance.klassInstances.get(this._className) || "";
+  }
+  static reAttachAllInterceptors() {
+    this.hooks.forEach((fun, key) => {
+      if (typeof fun == "function") {
+        info(color.yellow(`Reattching instance grabbers for class ${key}`));
+        fun();
+      }
+    });
+  }
+  static clearAndReattch() {
+    this.klassInstances.clear();
+    this.reAttachAllInterceptors();
+  }
+}
+export default ObjectInstance;
+ObjectInstance.klassInstances = new Map();
+ObjectInstance.hooks = new Map();

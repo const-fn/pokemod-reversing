@@ -1,0 +1,719 @@
+export const __esModule = true;
+export { getNullableType };
+export { getObjectArrayType };
+export { getObjectType };
+export { getPrimitiveArrayType };
+export { getPrimitiveType };
+export { isPrimitive };
+const _core = _interopRequireDefault(require("./core"));
+const _factory = _interopRequireDefault(require("./factory"));
+const _klass = _interopRequireDefault(require("./klass"));
+function _interopRequireDefault(obj) {
+  return obj && obj.__esModule ? obj : { default: obj };
+}
+
+const identity = (value) => value;
+
+const Process_pointerSize = Process.pointerSize;
+
+const PrimitiveTypeMap = {
+  void: {
+    type: "void",
+    size: 0,
+    defaultValue: undefined, //getKlass : () => Core.getClass("System", "Void"), There exists no case where this is required.
+    fromIl2cpp() {},
+    toIl2cpp() {
+      return NULL;
+    },
+    isCompatible(v) {
+      return v === undefined;
+    },
+    read() {},
+  },
+  bool: {
+    type: "uint8",
+    size: 1,
+    defaultValue: undefined,
+    getKlass: () => _klass.default.getClass("System", "Boolean"),
+    fromIl2cpp(v) {
+      return !!v;
+    },
+    toIl2cpp(v) {
+      return v ? 1 : 0;
+    },
+    isCompatible(v) {
+      return typeof v == "boolean";
+    },
+    read(address) {
+      return address.readU8();
+    },
+    write(address, value) {
+      address.writeU8(value);
+    },
+  },
+  double: {
+    type: "double",
+    size: 8,
+    defaultValue: 0,
+    getKlass: () => _klass.default.getClass("System", "Double"),
+    fromIl2cpp: identity,
+    toIl2cpp: identity,
+    isCompatible(v) {
+      return typeof v == "number";
+    },
+    read(address) {
+      return address.readDouble();
+    },
+    write(address, value) {
+      address.writeDouble(value);
+    },
+  },
+  sbyte: {
+    type: "int8",
+    size: 8,
+    defaultValue: 0,
+    getKlass: () => _klass.default.getClass("System", "Sbyte"),
+    fromIl2cpp: identity,
+    toIl2cpp: identity,
+    isCompatible(v) {
+      return Number.isInteger(v) && -128 <= v && v <= 127;
+    },
+    read(address) {
+      return address.readS8();
+    },
+    write(address, value) {
+      address.writeS8(value);
+    },
+  },
+  byte: {
+    type: "uint8",
+    size: 1,
+    defaultValue: 0,
+    getKlass: () => _klass.default.getClass("System", "Byte"),
+    fromIl2cpp: identity,
+    toIl2cpp: identity,
+    isCompatible(v) {
+      return Number.isInteger(v) && v >= 0 && v <= 255;
+    },
+    read(address) {
+      return address.readU8();
+    },
+    write(address, value) {
+      address.writeU8(value);
+    },
+  },
+  short: {
+    type: "int16",
+    size: 2,
+    defaultValue: 0,
+    getKlass: () => _klass.default.getClass("System", "Int16"),
+    fromIl2cpp: identity,
+    toIl2cpp: identity,
+    isCompatible(v) {
+      return Number.isInteger(v) && -32768 <= v && v <= 32767;
+    },
+    read(address) {
+      return address.readS16();
+    },
+    write(address, value) {
+      address.writeS16(value);
+    },
+  },
+  ushort: {
+    type: "uint16",
+    size: 2,
+    defaultValue: 0,
+    getKlass: () => _klass.default.getClass("System", "UInt16"),
+    fromIl2cpp: identity,
+    toIl2cpp: identity,
+    isCompatible(v) {
+      return Number.isInteger(v) && v >= 0 && v <= 65535;
+    },
+    read(address) {
+      return address.readU16();
+    },
+    write(address, value) {
+      address.writeU16(value);
+    },
+  },
+  int: {
+    type: "int32",
+    size: 4,
+    defaultValue: 0,
+    getKlass: () => _klass.default.getClass("System", "Int32"),
+    fromIl2cpp: identity,
+    toIl2cpp: identity,
+    isCompatible(v) {
+      return Number.isInteger(v) && -2147483648 <= v && v <= 2147483647;
+    },
+    read(address) {
+      return address.readS32();
+    },
+    write(address, value) {
+      address.writeS32(value);
+    },
+  },
+  uint: {
+    type: "uint32",
+    size: 4,
+    defaultValue: 0,
+    getKlass: () => _klass.default.getClass("System", "UInt32"),
+    fromIl2cpp: identity,
+    toIl2cpp: identity,
+    isCompatible(v) {
+      return Number.isInteger(v) && v >= 0 && v <= 4294967295;
+    },
+    read(address) {
+      return address.readU32();
+    },
+    write(address, value) {
+      address.writeU32(value);
+    },
+  },
+  char: {
+    type: "uint16",
+    size: 2,
+    defaultValue: 0,
+    getKlass: () => _klass.default.getClass("System", "Uint16"),
+    fromIl2cpp(c) {
+      return String.fromCharCode(c);
+    },
+    toIl2cpp(s) {
+      return s.charCodeAt(0);
+    },
+    isCompatible(v) {
+      if (typeof v != "string" || v.length !== 1) {
+        return false;
+      }
+      const code = v.charCodeAt(0);
+      return code >= 0 && code <= 65535;
+    },
+    read(address) {
+      return address.readU16();
+    },
+    write(address, value) {
+      address.writeU16(value);
+    },
+  },
+  long: {
+    type: "int64",
+    size: 8,
+    defaultValue: 0,
+    getKlass: () => _klass.default.getClass("System", "Int64"),
+    fromIl2cpp: identity,
+    toIl2cpp: identity,
+    isCompatible(v) {
+      return typeof v == "number" || v instanceof Int64;
+    },
+    read(address) {
+      return address.readS64();
+    },
+    write(address, value) {
+      address.writeS64(value);
+    },
+  },
+  ulong: {
+    type: "uint64",
+    size: 8,
+    defaultValue: 0,
+    getKlass: () => _klass.default.getClass("System", "UInt64"),
+    fromIl2cpp: identity,
+    toIl2cpp: identity,
+    isCompatible(v) {
+      return typeof v == "number" || v instanceof UInt64;
+    },
+    read(address) {
+      return address.readU64();
+    },
+    write(address, value) {
+      address.writeU64(value);
+    },
+  },
+  float: {
+    type: "float",
+    size: 4,
+    defaultValue: 0,
+    getKlass: () => _klass.default.getClass("System", "Single"),
+    fromIl2cpp: identity,
+    toIl2cpp: identity,
+    isCompatible(v) {
+      return typeof v == "number";
+    },
+    read(address) {
+      return address.readFloat();
+    },
+    write(address, value) {
+      address.writeFloat(value);
+    },
+  },
+  intptr: {
+    type: "pointer",
+    size: Process_pointerSize,
+    defaultValue: NULL,
+    getKlass: () => _klass.default.getClass("System", "IntPtr"),
+    fromIl2cpp(value) {
+      return value instanceof NativePointer
+        ? value.isNull() || value
+        : typeof value == "string" ||
+          value instanceof UInt64 ||
+          value instanceof UInt64 ||
+          value instanceof Int64
+        ? ptr(value)
+        : undefined;
+    },
+    toIl2cpp(value) {
+      return value == null
+        ? NULL
+        : value instanceof NativePointer
+        ? value
+        : typeof value == "string" ||
+          value instanceof UInt64 ||
+          value instanceof UInt64 ||
+          value instanceof Int64
+        ? ptr(value)
+        : undefined;
+    },
+    isCompatible(value) {
+      return (
+        value === null ||
+        value instanceof NativePointer ||
+        typeof value == "string" ||
+        value instanceof UInt64 ||
+        value instanceof Int64
+      );
+    },
+    read(address) {
+      return address.readPointer();
+    },
+    write(address, value) {
+      address.writePointer(value);
+    },
+  },
+};
+
+function getPrimitiveType(name) {
+  const PrimitiveTypeMap_name = PrimitiveTypeMap[name];
+  return (
+    PrimitiveTypeMap_name === undefined ||
+    (Object.assign(PrimitiveTypeMap_name, { name }), PrimitiveTypeMap_name)
+  );
+}
+function isPrimitive(name) {
+  return !!getPrimitiveType(name);
+}
+function getPrimitiveArrayType(typeName) {
+  const elementType = getPrimitiveType(typeName);
+  if (elementType) {
+    return {
+      name: `${typeName}[]`,
+      type: "pointer",
+      size: Process_pointerSize,
+      defaultValue: NULL,
+      isCompatible(v) {
+        if (v instanceof Il2CppArray) {
+          return true;
+        }
+        const isArrayLike =
+          typeof v == "object" && undefined !== (v == null || v.length);
+        return (
+          !!isArrayLike &&
+          v.every((element) => elementType.isCompatible(element))
+        );
+      },
+      fromIl2cpp(a) {
+        if (a.isNull()) {
+          return [];
+        }
+        const array = new Il2CppArray(a, elementType);
+        return array;
+      },
+      toIl2cpp(elements) {
+        if (elements instanceof Il2CppArray) {
+          return elements.$handle;
+        }
+
+        const il2cppArray = _core.default.createArray(
+          elementType.getKlass(),
+          elements.length
+        );
+
+        const start = il2cppArray.add(4 * Process_pointerSize);
+        for (let i = 0; i < elements.length; i++) {
+          const ele = elementType.toIl2cpp(elements[i]);
+          elementType.write(start.add(elementType.size * i), ele);
+        }
+        return il2cppArray;
+      },
+    };
+  }
+}
+function getObjectType(typeName, typePtr) {
+  return typeName === "System.String"
+    ? {
+        name: "string",
+        type: "pointer",
+        size: Process_pointerSize,
+        defaultValue: "",
+        getKlass: () => _klass.default.getClass("System", "String"),
+        fromIl2cpp(a) {
+          return _core.default.readString(a);
+        },
+        toIl2cpp(str) {
+          return str === null ? NULL : _core.default.createString(str);
+        },
+        isCompatible(v) {
+          return v === null || typeof v == "string";
+        },
+      }
+    : {
+        name: typeName,
+        type: "pointer",
+        size: Process_pointerSize,
+        defaultValue: NULL,
+        typePtr,
+        getKlass: () => _core.default.getTypeClass(typePtr),
+        fromIl2cpp(a, isObj = false) {
+          if (_core.default.isClassStruct(this.getKlass()) && !isObj) {
+            if (a.isNull()) {
+              a = Memory.alloc(
+                _core.default.getClassInstanceSize(this.getKlass())
+              ); // Fixes an issue that happened on Reticle.ScreenPositionOverBullseye
+              // in which the args[1] Vector2 breaks when calling value_box, probably
+              // because it doesn't exist?
+            } else {
+              try {
+                a.readPointer();
+              } catch (e) {
+                if (e.type == "access-violation") {
+                  a = Memory.alloc(
+                    _core.default.getClassInstanceSize(this.getKlass())
+                  );
+                } else {
+                  throw e;
+                }
+              }
+            }
+            a = _core.default.Box(this.getKlass(), a);
+          }
+          return a.isNull() || _factory.default.wrap(a);
+        },
+        toIl2cpp(o, wantObj = false) {
+          return o === null || o === undefined
+            ? NULL
+            : _core.default.isClassStruct(this.getKlass()) && !wantObj
+            ? _core.default.Unbox(o.$instance)
+            : o.$instance;
+        },
+        isCompatible(v) {
+          if (v === null) {
+            return true;
+          }
+          if (v === undefined) {
+            return false;
+          }
+          const isWrapper = v.$instance instanceof NativePointer;
+          if (isWrapper) {
+            const _typePtr = _core.default.getClassType(v.$klass);
+            const othertypeName = _core.default.getTypename(_typePtr);
+            if (typeName === othertypeName) {
+              return true;
+            }
+            if (_core.default.areTypesEqual(typePtr, _typePtr)) {
+              return true;
+            }
+            const klass = this.getKlass();
+            if (_core.default.isAssignableFrom(klass, v.$klass)) {
+              return true;
+            }
+          }
+          return false;
+        },
+      };
+}
+function getNullableType(typeName, typeHandle, baseType) {
+  return {
+    name: baseType.name,
+    type: baseType.type,
+    nullable: true,
+    size: baseType.size,
+    defaultValue: baseType.defaultValue,
+    typePtr: typeHandle,
+    getKlass: () => _core.default.getTypeClass(typeHandle),
+    fromIl2cpp(a) {
+      return baseType.fromIl2cpp(a);
+    },
+    toIl2cpp(o) {
+      let value;
+      const convertedO = baseType.toIl2cpp(o);
+
+      if (isPrimitive(baseType.name)) {
+        value = Memory.alloc(baseType.size);
+        baseType.write(value, convertedO);
+      } else {
+        value = convertedO;
+      }
+
+      return _core.default.Box(this.getKlass(), value);
+    },
+    isCompatible(v) {
+      return baseType.isCompatible(v);
+    },
+  };
+}
+function getObjectArrayType(typeName, typePtr) {
+  const elementType = getObjectType(typeName, typePtr);
+  return {
+    name: `${typeName}[]`,
+    type: "pointer",
+    size: Process_pointerSize,
+    defaultValue: NULL,
+    isCompatible(v) {
+      return (
+        !!(v instanceof Il2CppArray) ||
+        (Array.isArray(v)
+          ? v.every((element) => elementType.isCompatible(element))
+          : v.toString() === `${typeName}[]` || false)
+      );
+    },
+    fromIl2cpp(a) {
+      if (a.isNull()) {
+        return [];
+      }
+      const objArray = new Il2CppArray(a, elementType);
+      return objArray;
+    },
+    toIl2cpp(elements) {
+      if (elements instanceof Il2CppArray && !elements.hasChanged) {
+        return elements.$handle;
+      }
+
+      const il2cppArray = _core.default.createArray(
+        elementType.getKlass(),
+        elements.length
+      );
+
+      const start = il2cppArray.add(4 * Process_pointerSize);
+      for (let i = 0; i < elements.length; i++) {
+        const ele = elementType.toIl2cpp(elements[i]);
+        start.add(elementType.size * i).writePointer(ele);
+      }
+      return il2cppArray;
+    },
+  };
+}
+function Il2CppArray(handle, elementType, owned = false) {
+  this.length = _core.default.getArrayLength(handle);
+  this.hasChanged = false;
+  const byteSize = _core.default.getArrayByteSize(handle);
+  this.elementSize = byteSize / this.length;
+  this.isPrimitive = isPrimitive(elementType.name);
+  this.$start = handle.add(4 * Process_pointerSize);
+  this.$handle = handle;
+  this.elementType = elementType;
+  this.$ref = null;
+
+  if (owned) {
+    this.$ref = Script.bindWeak(this, _core.default.makeDestructor(handle));
+  }
+
+  return new Proxy(this, ArrayHandler);
+}
+const ArrayHandler = {
+  has(target, property) {
+    return !!(property in target) || target.tryParseIndex(property) !== null;
+  },
+  get(target, property) {
+    const index = target.tryParseIndex(property);
+    return index === null ? target[property] : target.readElement(index);
+  },
+  set(target, property, value) {
+    const index = target.tryParseIndex(property);
+    return index === null
+      ? ((target[property] = value), true)
+      : (target.writeElement(index, value), true);
+  },
+  ownKeys(target) {
+    const keys = [];
+    const { length } = target;
+    for (let i = 0; i !== length; i++) {
+      const key = i.toString();
+      keys.push(key);
+    }
+    keys.push("length");
+    return keys;
+  },
+  getOwnPropertyDescriptor(target, property) {
+    const index = target.tryParseIndex(property);
+    return index === null
+      ? Object.getOwnPropertyDescriptor(target, property)
+      : { writable: true, configurable: true, enumerable: true };
+  },
+};
+Object.defineProperties(Il2CppArray.prototype, {
+  $dispose: {
+    enumerable: true,
+    value() {
+      const ref = this.$ref;
+
+      if (ref !== null) {
+        this.$ref = null;
+        Script.unbindWeak(ref);
+      }
+    },
+  },
+  tryParseIndex: {
+    value(rawIndex) {
+      if (typeof rawIndex == "symbol") {
+        return null;
+      }
+      const index = parseInt(rawIndex);
+      return isNaN(index) || index < 0 || index >= this.length || index;
+    },
+  },
+  readElement: {
+    value(index) {
+      const { elementType, elementSize, $start } = this;
+      const val = $start.add(elementSize * index);
+      return this.isPrimitive
+        ? elementType.fromIl2cpp(elementType.read(val))
+        : elementType.fromIl2cpp(val.readPointer());
+    },
+  },
+  writeElement: {
+    value(index, value) {
+      const { elementType, elementSize, $start } = this;
+      if (!elementType.isCompatible(value)) {
+        error(
+          `${value} is not compatible with Array of element type ${elementType.name} at index ${index}`
+        );
+
+        return false;
+      }
+      const address = $start.add(elementSize * index);
+      const ele = elementType.toIl2cpp(value);
+
+      if (this.isPrimitive) {
+        elementType.write(address, ele);
+      } else {
+        address.writePointer(ele);
+      }
+
+      return true;
+    },
+  },
+  toJSON: {
+    value() {
+      const { length } = this;
+      const values = [];
+      for (let i = 0; i !== length; i++) {
+        const value = this.readElement(i);
+        if (!value) {
+          break;
+        }
+        values.push(value);
+      }
+      return values;
+    },
+  },
+  toString: {
+    value() {
+      const json = this.toJSON();
+      return `[${json.toString()}]`;
+    },
+  },
+  forEach: {
+    value(callback) {
+      const { length, readElement } = this;
+      for (let i = 0; i < length; i++) {
+        const readElementBounded = readElement.bind(this);
+        const element = readElementBounded(i);
+        if (!element) {
+          break;
+        }
+        callback(element, i);
+      }
+    },
+  },
+  some: {
+    value(callback) {
+      const { length, readElement } = this;
+      for (let i = 0; i < length; i++) {
+        const readElementBounded = readElement.bind(this);
+        const element = readElementBounded(i);
+        if (!element) {
+          break;
+        }
+        if (callback(element, i)) {
+          return true;
+        }
+      }
+      return false;
+    },
+  },
+  map: {
+    value(callback) {
+      const { length, readElement } = this;
+      const newArray = [];
+      for (let i = 0; i < length; i++) {
+        const readElementBounded = readElement.bind(this);
+        const element = readElementBounded(i);
+        if (!element) {
+          break;
+        }
+        newArray.push(callback(element, i));
+      }
+      return newArray;
+    },
+  },
+  filter: {
+    value(callback) {
+      const { length, readElement } = this;
+      const newArray = [];
+      for (let i = 0; i < length; i++) {
+        const readElementBounded = readElement.bind(this);
+        const element = readElementBounded(i);
+        if (!element) {
+          break;
+        }
+
+        if (callback(element, i)) {
+          newArray.push(element);
+        }
+      }
+      return newArray;
+    },
+  },
+  push: {
+    value(val) {
+      const isSuccess = this.writeElement(this.length, val);
+
+      if (isSuccess) {
+        this.length++;
+        this.hasChanged = true;
+      }
+
+      return this.length;
+    },
+  },
+  pop: {
+    value() {
+      const item = this.readElement(this.length);
+      this.length--;
+      this.hasChanged = true;
+      return item;
+    },
+  },
+  [Symbol.iterator]: {
+    *value() {
+      const { length, readElement } = this;
+      for (let i = 0; i < length; i++) {
+        const readElementBounded = readElement.bind(this);
+        const element = readElementBounded(i);
+        if (!element) {
+          break;
+        }
+        yield element;
+      }
+    },
+  },
+});

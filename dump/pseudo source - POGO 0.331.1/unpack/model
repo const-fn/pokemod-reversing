@@ -1,0 +1,99 @@
+import _field from "./field";
+import _method, { makeCallable } from "./method";
+export const __esModule = true;
+const _core = _interopRequireDefault(require("./core"));
+function _interopRequireDefault(obj) {
+  return obj && obj.__esModule ? obj : { default: obj };
+}
+/* eslint-disable prefer-rest-params */ const modelCache = {};
+class Model {
+  constructor(methods, fields) {
+    this.methods = methods;
+    this.fields = fields;
+  }
+  has(member) {
+    return !!this.find(member);
+  }
+  hasField(member) {
+    return this.fields.some((field) => field.fieldName === member);
+  }
+  find(member) {
+    let _member;
+    return (this.methods.forEach((method) => {
+      if (method.methodName === member) {
+        _member = method;
+      }
+    }),
+    _member)
+      ? _member
+      : (this.fields.forEach((field) => {
+          if (field.fieldName === member) {
+            _member = field;
+          }
+        }),
+        _member)
+      ? _member
+      : undefined;
+  }
+  list() {
+    const l = [];
+
+    this.methods.forEach((method) => {
+      l.push(method.methodName);
+    });
+
+    this.fields.forEach((field) => {
+      l.push(field.fieldName);
+    });
+
+    return l;
+  }
+}
+class ModelBuilder {
+  constructor(klass) {
+    if (modelCache[klass]) {
+      return modelCache[klass];
+    }
+    const methods = _core.default.getAllClassMethods(klass);
+    const fields = _core.default.getAllClassFields(klass);
+    let model_fields = [];
+    let model_methods = [];
+    const dispatchers = {};
+
+    methods.forEach((methodInfo) => {
+      const method = makeCallable();
+      Object.setPrototypeOf(method, _method.methodPrototype);
+      method.methodInfo = methodInfo;
+      method.klass = klass;
+
+      if (dispatchers[method.methodName]) {
+        dispatchers[method.methodName].push(method);
+      } else {
+        dispatchers[method.methodName] = [method];
+      }
+    });
+
+    model_methods = [];
+
+    Object.values(dispatchers).forEach((overloads) => {
+      model_methods.push(makeMethodDispatcher(overloads));
+    });
+
+    model_fields = [];
+
+    fields.forEach((fieldInfo) => {
+      model_fields.push(new _field.Field(fieldInfo));
+    });
+
+    const model = new Model(model_methods, model_fields);
+    modelCache[klass] = model;
+    return model;
+  }
+}
+export default ModelBuilder;
+function makeMethodDispatcher(overloads) {
+  const method = makeCallable();
+  Object.setPrototypeOf(method, _method.dispatcherPrototype);
+  method._overloads = overloads;
+  return method;
+}

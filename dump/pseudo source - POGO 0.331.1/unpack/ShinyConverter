@@ -1,0 +1,248 @@
+import Common_1 from "../../main/utils/Common";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../../main/utils/ModuleBase"));
+const UnityUtils_1 = __importDefault(require("../../main/utils/UnityUtils"));
+const UserData_1 = __importDefault(require("../../main/utils/UserData"));
+class ShinyConverter extends ModuleBase_1.default {
+  constructor() {
+    super();
+    this.unlocked = false;
+    this.ourCutscene = false;
+    this.ourPanel = false;
+    this.panels = [];
+    this.PokemonInventoryGuiController = undefined;
+    this._List = undefined;
+    this._PokemonProto = undefined;
+  }
+  init() {
+    super.init();
+    this._List = ditto_1.default.use("System.Collections.Generic.List`1");
+    this._PokemonProto = ditto_1.default.use("PokemonProto");
+    const self = this;
+
+    const PokemonInfoPanel = ditto_1.default.use(
+      "Niantic.Holoholo.UI.Pokemon.PokemonInfoPanel"
+    );
+
+    PokemonInfoPanel.DoUpdate.attach({
+      onEnter(args) {
+        this.pokemonProto = args[0];
+      },
+      onLeave() {
+        let _this$pokemonProto$po;
+
+        if (self.ourPanel) {
+          self.ourPanel = false;
+          self.changeLabels(this);
+        }
+
+        if (!this.pokemonProto) {
+          return;
+        }
+
+        const upgradeSection = this.upgradeSection;
+        if (!upgradeSection) {
+          return;
+        }
+        const sectionRTR = upgradeSection.base.base.base.get_transform();
+        let shinifyGO;
+        let shinifyButton;
+        let shinifyRTR = sectionRTR.base.Find("ShinifyBtn");
+        if (!shinifyRTR) {
+          const purifyButtonRTR = sectionRTR.base.Find("PurifyButton");
+          if (!purifyButtonRTR) {
+            return void error(`"PurifyButton" not found`);
+          }
+
+          shinifyRTR = UnityUtils_1.default.Object.Instantiate(
+            purifyButtonRTR,
+            sectionRTR
+          );
+
+          shinifyRTR.base.base.base.set_name("ShinifyBtn");
+          shinifyGO = shinifyRTR.base.base.get_gameObject();
+          shinifyGO.set_active(false);
+          const label = shinifyGO.GetComponentInChildren(
+            UnityUtils_1.default.UI.Text.typeof
+          );
+          label.textKey = "";
+          label.base.set_text("SHINIFY");
+          const stardustRTR = shinifyRTR.base.Find("Stardust");
+          if (stardustRTR) {
+            const stardustGO = stardustRTR.base.base.get_gameObject();
+            stardustGO.set_active(false);
+          }
+          const candyRTR = shinifyRTR.base.Find("PokemonCandyVectorWidget");
+          if (candyRTR) {
+            const candyGO = candyRTR.base.base.get_gameObject();
+            candyGO.set_active(false);
+          }
+          shinifyButton = shinifyGO.GetComponentInChildren(
+            UnityUtils_1.default.UI.Button.typeof
+          );
+          const btnGraphic = shinifyButton.base.m_TargetGraphic;
+          const btnColor = UnityUtils_1.default.Color.$new(1, 1, 0.55, 1);
+          btnGraphic.base.base.set_color(btnColor);
+          const bgRTR = shinifyRTR.base.Find("BG");
+          if (bgRTR) {
+            const bgImage = bgRTR.base.base.GetComponentInChildren(
+              UnityUtils_1.default.UI.Image.typeof
+            );
+            if (bgImage) {
+              const bgColor = UnityUtils_1.default.Color.$new(1, 1, 1, 0);
+              bgImage.base.base.set_color(bgColor);
+            }
+          }
+        }
+        if (shinifyRTR) {
+          if (!shinifyGO) {
+            shinifyRTR.base.base.get_gameObject();
+          }
+
+          if (!self.unlocked) {
+            return void shinifyGO.set_active(false);
+          }
+
+          if (
+            null !=
+              (_this$pokemonProto$po = this.pokemonProto.pokemonDisplay_) &&
+            _this$pokemonProto$po.shiny_
+          ) {
+            return void shinifyGO.set_active(false);
+          }
+
+          if (!shinifyButton) {
+            shinifyGO.GetComponentInChildren(
+              UnityUtils_1.default.UI.Button.typeof
+            );
+          }
+
+          const buttonEvent = UnityUtils_1.default.makeButtonClickedEvent(
+            `shinify_${this.$instance.toString()}`,
+            () => {
+              const pokemonClone = this.pokemonProto.Clone();
+              pokemonClone.pokemonDisplay_.shiny_ = true;
+              Common_1.shouldCancelEvolveSkip = true;
+              self.ourCutscene = true;
+
+              const action = UnityUtils_1.default.makeAction(
+                "shinify_cutscene_then",
+                "System.Action",
+                () => {
+                  if (self.PokemonInventoryGuiController) {
+                    self.ourPanel = true;
+
+                    const inflated = self._List.typeof.MakeGenericType([
+                      self._PokemonProto.typeof,
+                    ]);
+
+                    const list = inflated.CreateInstanceDefaultCtor(
+                      false,
+                      false,
+                      false,
+                      false,
+                      null
+                    );
+
+                    if (UserData_1.default.tier == "user") {
+                      list.Add(this.pokemonProto);
+
+                      self.PokemonInventoryGuiController.ShowPokemonInfo(
+                        list,
+                        this.pokemonProto
+                      );
+                    } else {
+                      list.Add(pokemonClone);
+
+                      self.PokemonInventoryGuiController.ShowPokemonInfo(
+                        list,
+                        pokemonClone
+                      );
+                    }
+                  } else {
+                    if (UserData_1.default.tier != "user") {
+                      this.DoUpdate(pokemonClone);
+                    }
+
+                    self.changeLabels(this);
+                  }
+                },
+                true
+              );
+
+              const promise = this.pokemonCutsceneService.PlayEvolveCutscene(
+                this.pokemonProto,
+                pokemonClone
+              );
+
+              promise.Then(action);
+
+              if (self.PokemonInventoryGuiController) {
+                this.guiController.base.base.Dismiss();
+              }
+            }
+          );
+          shinifyButton.m_OnClick = buttonEvent;
+          shinifyGO.set_active(true);
+        }
+      },
+    });
+
+    PokemonInfoPanel.OnCameraButtonClicked.attach({
+      onLeave() {
+        if (this.weightText.get_text() == "Pokemod ") {
+          self.ourPanel = true;
+        }
+      },
+    });
+
+    const EvolutionCutsceneGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.Cutscenes.EvolutionCutsceneGuiController"
+    );
+    EvolutionCutsceneGuiController.ShowEvolveName.replace(function () {
+      return self.ourCutscene
+        ? ((self.ourCutscene = false),
+          void (Common_1.shouldCancelEvolveSkip = false))
+        : void this.ShowEvolveName();
+    });
+    const PokemonInventoryGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.UI.Pokemon.PokemonInventoryGuiController"
+    );
+
+    PokemonInventoryGuiController.ClickDismiss.attach({
+      onLeave() {
+        self.PokemonInventoryGuiController = undefined;
+      },
+    });
+
+    PokemonInventoryGuiController.ShowPokemonInfo.attach({
+      onLeave() {
+        self.PokemonInventoryGuiController = this;
+      },
+    });
+  }
+  changeLabels(panel) {
+    panel.nameText.set_supportRichText(true);
+
+    panel.nameText.set_text(
+      "<size=48>Happy BD Hanke! <color=#ff0000>\u2661</color></size>"
+    );
+
+    panel.staminaText.set_text("9001");
+    panel.staminaMaxText.set_text("9001");
+    panel.weightText.set_text("Pokemod ");
+    panel.heightText.set_text("Pokemod ");
+    panel.oldPokemonLabelYearText.set_text("1967");
+    panel.oldPokemonLabelMonthDayText.set_text("19/09");
+    panel.oldPokemonLabel.set_active(true);
+
+    if (UserData_1.default.tier == "user") {
+      panel.cpValueText.set_text(" Subscribe to Pro");
+    } else {
+      panel.cpValueText.set_text(" Pokemod");
+    }
+  }
+}
+export default ShinyConverter;

@@ -1,0 +1,207 @@
+const Spanish = {
+  common: {
+    ok: "Vale",
+    cancel: "Cancelar",
+    count: "Contar",
+    confirm: "Confirmar",
+    settings: "Configuracion",
+    add: "A\xF1adir",
+    default: "Patr\xF3n",
+    alert: "\xA1Atenci\xF3n!",
+    ackWarning: "Entiendo",
+  },
+  toast: {
+    restartYourGame: "Por favor reinicia el juego.",
+    toc: {
+      transferred: "Transferido",
+      notTransferred: "No Transferido",
+      disabldToc:
+        "Tranferir al Capturar ha sido <color=#FF0000>desactivado</color>, para este encuentro",
+    },
+    incognitoMode: {
+      blankNameEnabled: "Nombre en blanco activado",
+      blankNameDisabled: "Nombre en blanco desactivado",
+    },
+    instantResult: {
+      catchError: "\xBFError durante la captura?",
+      catchSuccess: "\xA1Captura Exitosa!",
+      catchEscape: "El Pok\xE9mon Escap\xF3..",
+      catchFled: "El Pok\xE9mon Huy\xF3! :(",
+      catchMissed: "\xBFCaptura perdida?",
+      maybeShinyDitto: "\xA1Es un {maybeShiny} Ditto!",
+      xlCandy: "Obtienes {obtainedXlCandy} XL",
+    },
+    skipIntro: {
+      ditto:
+        "\xA1Un <b>Ditto</b> ha aparecido! \n<color=#FFD700> Puede ser Shiny?</color>",
+    },
+    packSpeed: {
+      cheatCode: "\xA1Ese es el cheatcode #14, felicitaciones!",
+      spawnPokeStopPokemon: "Oh? Hay algo escondido aqu\xED.",
+    },
+    instantGift: {
+      willAddSticker:
+        "Sticker puede ser a\xF1adido al regalo si tienes disponible.",
+      wontAddSticker: "Sticker no puede ser a\xF1adido a los regalos.",
+      noStickerAvailable: "No hay Stickers disponibles",
+      sentWithSticker: "Regalo enviado con Sticker",
+      bagFull: "Tu inventario est\xE1 lleno",
+      dailyLimitReached: "Haz alcanzado tu limite diario!",
+      giftErr: "Este regalo no existe!",
+      pcSuccess: "Postal guardada y removida!",
+      pcAlreadyCreated: "La postal de este lugar ya existe.",
+      pcInvFull: "Tu inventario de postales esta lleno.",
+      pcRateLimited: "Tranquilo! El servidor no puede tener tu mismo ritmo.",
+      pcDailyLimit: "Haz alcanzado tu limite diario de postales!",
+    },
+    instantGiftV2: {
+      noHaveGifts: "No hay regalos para enviar.",
+      noMoreGifts: "No hay regalos en el inventario.",
+      openLimit: "Has alcanzado el l\xEDmite de regalos diarios.",
+      bagFull: "Tu mochila est\xE1 llena!",
+      giftNotExist: "This gift does not exist.",
+    },
+    buddyInteractions: {
+      buddyCpTooHigh: "Los CP de tu compa\xF1ero son muy altos para esta liga!",
+      totalBuddyHearts:
+        "Total de corazones con tu compa\xF1ero: {totalBuddyHearts}",
+    },
+    itemCleaner: { settingReset: "Reiniciar la configuraci\xF3n" },
+    performanceMode: {
+      yesroads: "Ahora puedes ver las calles, reinicia la aplicaci\xF3n.",
+      noroads: "Ahora no puedes ver las calles, reinicia la aplicaci\xF3n.",
+    },
+    teamRocket: {
+      easterEgg: "\xA1Oh Dios Mio! Haz encontrado easter egg #23.",
+    },
+    vpgp: {
+      enabled: "Auto relleno de Pokeballs fue <color=#008000>Activado</color>",
+      disabled:
+        "Auto relleno de Pokeballs fue <color=#FF0000>Desactivado</color>",
+      reconnecting: "Reconectando",
+    },
+    inventoryTweaks: {
+      applyAllNoItem: "No hay art\xEDculos o Pok\xE9mon para aplicar",
+    },
+  },
+  modals: {
+    inventoryTweaks: {
+      evolveTitle: "Confirmar Evoluci\xF3n",
+      evolveBody: "Est\xE1s a punto de Evolucionar {number} Pok\xE9mon",
+      purifyTitle: "Confirmar Purificaci\xF3n",
+      purifyBody: "Est\xE1s a punto de Purificar {number} Pok\xE9mon",
+    },
+    buddyInteractions: {
+      dontUseAny: "No usar ninguna",
+      forcedModalTitle: "Cambiar Baya",
+      forcedModalBody:
+        "Quieres cambiar la configuraci\xF3n de las bayas?{forcedText}",
+      prevItem: "Baya previamente seleccionada {berry}",
+      notEnoughBerryTitle: "No hay bayas suficientes",
+      notEnoughBerryBody:
+        "No tienes suficientes {razz}, {nanab}, {pinap}{fallbackItem} \xBFTe gustar\xEDa usar otra baya para alimentar a tu compa\xF1ero?",
+      totalHearts: "Total de Corazones",
+      excitementPoints: "Puntos de Esfuerzo",
+    },
+    itemCleaner: {
+      currentSetting: "Configuraci\xF3n Actual",
+      gotIt: "!Entendido!",
+      clearSettings: "Limpiar Configuraci\xF3n",
+      setupRecycleBtn: "Auto Reciclador",
+      setMaxAmount: "Configurar el monto <b>Maximo</b>",
+    },
+    removeBuddy: {
+      modalTitle: "Quitar Compa\xF1ero",
+      modalBody:
+        "Sin un compa\xF1ero, es posible que veas Zoruas salvajes en su forma original.\n\xBFEst\xE1s seguro de que quieres devolver tu compa\xF1ero a tu bolso?",
+    },
+    instantGiftV2: {
+      openGift_title: "\xBFAbrir regalos de {totalFriends} amigo(s)?",
+      openGift_body:
+        "No podr\xE1s abrir regalos si ya se ha alcanzado el l\xEDmite diario de regalos abiertos.",
+      openGift_button: "Abrir",
+      sendGift_title: "\xBFQuieres enviar regalos a {totalFriends} amigo(s)?",
+      sendGift_body:
+        "No ser\xE1 posible enviar si no hay regalos disponibles o si tu amigo ya recibi\xF3 un regalo hoy.",
+      sendGift_button: "Enviar",
+      sendGift_button_sticker: "Enviar con pegatina",
+      delFriend_title: "\xBFQuieres quitar {totalFriends} amigo(s)?",
+      delFriend_body: "Esta acci\xF3n es irreversible",
+      delFriend_button: "Si, quitar",
+    },
+    teamRocket: {
+      rateLimited:
+        'Pokemod ha detectado que est\xE1s luchando contra reclutas m\xE1s r\xE1pido que el l\xEDmite de Niantic de 60 reclutas por hora. Continuar puede activar un "BSOD" y bloquearte temporalmente.\n\n\xA1Procede bajo tu propio riesgo!',
+    },
+  },
+  ui: {
+    pgpUtils: { pokeballRefillToggleName: "Reponer Pokebolas" },
+    advancedSettings: {
+      talkToMeWillow: "H\xE1blame Willow",
+      talkToMeWillowTip: "Activar para obtener di\xE1logos de misiones.",
+      addStickers: "A\xF1adir Sticker",
+      preventMetadataLag: "Evitar el retraso de los metadatos",
+      preventMetadataLagTip:
+        "Alivia el lag/retraso causado por los datos de ubicaci\xF3n de Pok\xE9mon, Regalos y Postales.",
+      disableRoadsToggleName: "Deshabilitar capas del mapa",
+      disableRoadsToggleTip:
+        "Caminos y edificios ser\xE1n removidos del mapa. <b>Reinicie la aplicaci\xF3n para aplicar</b>.",
+      skipMedalToggleName: "Ignorar la ventana emergente de medalla",
+      skipMedalToggleTip:
+        "Evite las ventanas emergentes relacionadas con las medallas.",
+      setCustomFpsTarget: "Personalizar la frecuencia de actualizaci\xF3n",
+      currentTarget: "Frecuencia actual",
+      enterCheatcodeButton: "Cheatcode",
+      enterCheatcodeModal: "Escribe el cheatcode",
+      leekduckToggleDescriptionForDumbUsers:
+        "Reemplaza la pesta\xF1a Eventos con el sitio web de Leekduck",
+      poiShrinkName: "Performance Mode: POI - Shrinking",
+      poiShrinkTip:
+        "Habilita la mec\xE1nica de encogimiento para Gimnasios y Pok\xE9paradas. <b>Reinicie la aplicaci\xF3n para aplicar</b>.",
+    },
+    inventoryTweaks: { applyAll: "Usar en todos" },
+    autoQuests: {
+      autoRecycle: "AUTO RECICLAJE",
+      questRemoved: "Misi\xF3n eliminada",
+      rewardClaimed: "Recompensa de la misi\xF3n reclamada",
+      milestoneClaimed: "Recompensa de paso reclamada",
+      tAutoClaim: "Misiones - Reclamo autom\xE1tico",
+      tAutoClaimTip:
+        "Reclama autom\xE1ticamente la recompensa de la misi\xF3n cuando la completes.",
+      tClaimPkmn: "Misiones - Reclamar Pok\xE9mon",
+      tClaimPkmnTip:
+        "Tambi\xE9n reclama Pok\xE9mon autom\xE1ticamente de una misi\xF3n envi\xE1ndolos al Limbo.\n<b><color=#FFAA00>Advertencia: el almacenamiento del Limbo tiene un l\xEDmite de 99.</color></b>",
+      bResetRecycleList: "Misiones - Borrar lista de reciclaje",
+      bResetRecycleListTip:
+        "Borra todas las misiones que seleccionaste para reciclar.",
+      bResetRecycleListSuccess: "Se ha limpiado la lista de reciclaje!",
+    },
+  },
+  cooldown: {
+    cooldown: "Cooldown",
+    time: { h: "h", m: "m", s: "s", ago: "antes" },
+    distance: { distance: "Distancia", m: "m", km: "km" },
+    types: {
+      noRecords: "No hay registros",
+      unknown: "Desconocido",
+      catch: "Intento de atrapar",
+      manual: "Manual",
+      pokestop: "Pokeparada",
+      healing: "Curaci\xF3n en gimnasio",
+      battle: "Batalla de gimnasio",
+      defending: "Gimnasio ocupado",
+      pgp: "Go Plus",
+    },
+    ui: {
+      manualSave: "Guardar manualmente",
+      modalTitle: "El tiempo de cooldown ha terminado",
+      modalBody: "Tal vez",
+      tBlockThrowsTitle: "Evita los lanzamientos",
+      tBlockThrowsTip: "Evita los lanzamientos durante el tiempo de cooldown.",
+      tRocketTpTitle: "Rocket teleport",
+      tRocketTpTip:
+        "Teletransportate a la ubicaci\xF3n anterior para capturar Sombrosos mientras est\xE1s en CD (m\xE1s de 10 segundos).",
+    },
+  },
+};
+export default Spanish;

@@ -1,0 +1,210 @@
+const BrazilianPortuguese = {
+  common: {
+    ok: "OK",
+    cancel: "Cancelar",
+    count: "Contar",
+    confirm: "Confirme",
+    settings: "Configura\xE7\xF5es",
+    add: "Adicionar",
+    default: "Padr\xE3o",
+    alert: "Aten\xE7\xE3o!",
+    ackWarning: "Entendi",
+  },
+  toast: {
+    restartYourGame: "Por favor reinicie o jogo.",
+    toc: {
+      transferred: "Transferido",
+      notTransferred: "N\xE3o Transferido",
+      disabldToc:
+        "Transferir ao Capturar foi <color=#FF0000>desativado</color>, para este encontro",
+    },
+    incognitoMode: {
+      blankNameEnabled: "Nome em branco ativado",
+      blankNameDisabled: "Nome em branco desativado",
+    },
+    instantResult: {
+      catchError: "Erro Durante a Captura?",
+      catchSuccess: "Capturado com Sucesso!",
+      catchEscape: "Pok\xE9mon Escapou...",
+      catchFled: "Pok\xE9mon Fugiu! :(",
+      catchMissed: "Captura Perdida?",
+      maybeShinyDitto: "Isto \xE9 um {maybeShiny} Ditto!",
+      xlCandy: "Recebeu {obtainedXlCandy} XL",
+    },
+    skipIntro: {
+      ditto:
+        "Um <b>Ditto</b> selvagem apareceu!\n<color=#FFD700> Ser\xE1 um shiny?</color>",
+    },
+    packSpeed: {
+      cheatCode: "Este \xE9 o cheatcode #14, parab\xE9ns",
+      spawnPokeStopPokemon: "Oh? Tem algo escondido aqui.",
+    },
+    instantGift: {
+      willAddSticker:
+        "Adesivos ser\xE3o adicionados aos presentes que voc\xEA enviar.",
+      wontAddSticker: "Adesivos n\xE3o ser\xE3o adicionados aos presentes.",
+      noStickerAvailable: "Voc\xEA n\xE3o tem adesivos dispon\xEDveis",
+      sentWithSticker: "Enviando presentes com adesivos",
+      bagFull: "Sua mochila est\xE1 cheia",
+      dailyLimitReached: "Voc\xEA atingiu o limite di\xE1rio!",
+      giftErr: "Este presente n\xE3o existe!",
+      pcSuccess: "O cart\xE3o-postal foi fixado e removido!",
+      pcAlreadyCreated: "Ja existe um cart\xE3o-postal para esta localidade.",
+      pcInvFull: "O livro de cart\xF5es-postais esta cheio.",
+      pcRateLimited:
+        "Desacelere! O servidor n\xE3o consegue acompanhar voc\xEA.",
+      pcDailyLimit:
+        "Voc\xEA atingiu o seu limite di\xE1rio de cart\xF5es-postais!",
+    },
+    instantGiftV2: {
+      noHaveGifts: "N\xE3o h\xE1 presentes para enviar.",
+      noMoreGifts: "N\xE3o h\xE1 mais presentes no invent\xE1rio.",
+      openLimit: "Voc\xEA atingiu o limite di\xE1rio de presentes.",
+      bagFull: "Sua bolsa est\xE1 cheia!",
+      giftNotExist: "Este presente n\xE3o existe.",
+    },
+    buddyInteractions: {
+      buddyCpTooHigh:
+        "O PC do seu companheiro \xE9 alto demais para esta liga!",
+      totalBuddyHearts:
+        "Total de cora\xE7\xF5es com seu companheiro: {totalBuddyHearts}",
+    },
+    itemCleaner: { settingReset: "Reiniciar configura\xE7\xF5es" },
+    performanceMode: {
+      yesroads: "Agora voc\xEA ver\xE1 as ruas, reinicie para continuar",
+      noroads: "Voc\xEA n\xE3o ver\xE1 as ruas, reinicie para continuar",
+    },
+    teamRocket: {
+      easterEgg: "Oh meu Deus! Voc\xEA encontrou o easter egg #23.",
+    },
+    vpgp: {
+      enabled:
+        "Reposi\xE7\xE3o de pok\xE9bola foi <color=#008000>ativado</color>",
+      disabled:
+        "Reposi\xE7\xE3o de pok\xE9bola foi <color=#FF0000>desativado</color>",
+      reconnecting: "Reconectando",
+    },
+    inventoryTweaks: {
+      applyAllNoItem: "N\xE3o h\xE1 itens ou Pok\xE9mon para aplicar",
+    },
+  },
+  modals: {
+    inventoryTweaks: {
+      evolveTitle: "Confirme Evolu\xE7\xE3o",
+      evolveBody: "Voc\xEA est\xE1 prestes a Evoluir {number} Pok\xE9mon",
+      purifyTitle: "Confirme Purifica\xE7\xE3o",
+      purifyBody: "Voc\xEA est\xE1 prestes a Purificar {number} Pok\xE9mon",
+    },
+    buddyInteractions: {
+      dontUseAny: "N\xE3o use nenhuma",
+      forcedModalTitle: "Mudar fruta",
+      forcedModalBody:
+        "Voc\xEA gostaria de mudar as configura\xE7\xF5es do uso de frutas?{forcedText}",
+      prevItem: "Fruta anteriormente selecionada {berry}",
+      notEnoughBerryTitle: "Voc\xEA n\xE3o tem frutas o suficiente",
+      notEnoughBerryBody:
+        "Voc\xEA n\xE3o tem {razz}, {nanab}, {pinap}{fallbackItem} o suficiente. Gostaria de usar outra fruta para alimentar seu companheiro?",
+      totalHearts: "Total de Cora\xE7\xF5es",
+      excitementPoints: "Pontos de Esfor\xE7o",
+    },
+    itemCleaner: {
+      currentSetting: "Configura\xE7\xE3o Atual",
+      gotIt: "Entendi!",
+      clearSettings: "Limpar configura\xE7\xF5es",
+      setupRecycleBtn: "Reciclagem Autom\xE1tica",
+      setMaxAmount: "Defina o valor <b>m\xE1ximo</b>",
+    },
+    removeBuddy: {
+      modalTitle: "Remover Companheiro",
+      modalBody:
+        "Sem um companheiro, voc\xEA poder\xE1 ver Zoruas selvagens em sua forma original.\nTem certeza de que deseja devolver seu companheiro \xE0 sua bolsa?",
+    },
+    instantGiftV2: {
+      openGift_title: "Abrir presentes de {totalFriends} amigo(s)?",
+      openGift_body:
+        "N\xE3o ser\xE1 poss\xEDvel abrir presentes se o limite di\xE1rio de presentes abertos j\xE1 tiver sido atingido.",
+      openGift_button: "Abrir",
+      sendGift_title: "Quer enviar presentes para {totalFriends} amigo(s)?",
+      sendGift_body:
+        "N\xE3o ser\xE1 poss\xEDvel enviar se n\xE3o houver presentes dispon\xEDveis ou se o amigo j\xE1 tiver recebido presente hoje.",
+      sendGift_button: "Enviar",
+      sendGift_button_sticker: "Enviar com adesivo",
+      delFriend_title: "Deseja remover {totalFriends} amigo(s)?",
+      delFriend_body: "Esta a\xE7\xE3o \xE9 irrevers\xEDvel",
+      delFriend_button: "Sim, remover",
+    },
+    teamRocket: {
+      rateLimited:
+        'Pokemod detectou que voc\xEA est\xE1 lutando contra recrutas mais r\xE1pido que o limite da Niantic de 60 recrutas por hora. Continuar pode desencadear um "BSOD" e bloquear voc\xEA temporariamente.\n\nProssiga por sua conta e risco!',
+    },
+  },
+  ui: {
+    pgpUtils: { pokeballRefillToggleName: "Repor Pokebolas" },
+    advancedSettings: {
+      talkToMeWillow: "Fala comigo Willow",
+      talkToMeWillowTip: "Ative para obter os di\xE1logos de miss\xF5es.",
+      addStickers: "Adicionar adesivos",
+      preventMetadataLag: "Evitar atraso de metadados",
+      preventMetadataLagTip:
+        "Atenua o lag/atraso causado por dados de localiza\xE7\xE3o de Pok\xE9mon, Presentes e Cart\xF5es Postais.",
+      disableRoadsToggleName: "Desativar Ruas",
+      disableRoadsToggleTip:
+        "Ruas e edif\xEDcios ser\xE3o removidos do mapa. <b>Reinicie o aplicativo para aplicar</b>.",
+      skipMedalToggleName: "Ignorar pop-up de medalha",
+      skipMedalToggleTip: "Evita pop-ups relacionados a medalhas.",
+      setCustomFpsTarget: "Personalizar taxa de atualiza\xE7\xE3o",
+      currentTarget: "Taxa atual",
+      enterCheatcodeButton: "Cheatcode",
+      enterCheatcodeModal: "Digite o cheatcode",
+      leekduckToggleDescriptionForDumbUsers:
+        "Substitui a aba Eventos pelo site Leekduck",
+      poiShrinkName: "Performance Mode - POI Shrinking",
+      poiShrinkTip:
+        "Permite a mec\xE2nica de encolhimento de Gin\xE1sios e Pok\xE9stops. <b>Reinicie o aplicativo para aplicar</b>.",
+    },
+    inventoryTweaks: { applyAll: "Usar em todos" },
+    autoQuests: {
+      autoRecycle: "AUTO-RECICLAGEM",
+      questRemoved: "Miss\xE3o removida",
+      rewardClaimed: "Recompensa da miss\xE3o reivindicada",
+      milestoneClaimed: "Recompensa de etapa reivindicada",
+      tAutoClaim: "Miss\xF5es - Reivindica\xE7\xE3o Autom\xE1tica",
+      tAutoClaimTip:
+        "Reivindica automaticamente recompensa da miss\xE3o sempre que for conclu\xEDda.",
+      tClaimPkmn: "Miss\xF5es - Reivindicar Pok\xE9mon",
+      tClaimPkmnTip:
+        "Tamb\xE9m reivindica automaticamente o Pok\xE9mon de uma miss\xE3o enviando-o para o Limbo.\n<b><color=#FFAA00>Aviso: o armazenamento do Limbo \xE9 limitado a 99.</color></b>",
+      bResetRecycleList: "Miss\xF5es - Limpar lista de reciclagem",
+      bResetRecycleListTip:
+        "Limpa todas as miss\xF5es que voc\xEA selecionou para serem recicladas.",
+      bResetRecycleListSuccess: "A lista de reciclagem foi limpa!",
+    },
+  },
+  cooldown: {
+    cooldown: "Cooldown",
+    time: { h: "h", m: "m", s: "s", ago: "atr\xE1s" },
+    distance: { distance: "Dist\xE2ncia", m: "m", km: "km" },
+    types: {
+      noRecords: "Sem registros",
+      unknown: "Desconhecido",
+      catch: "Tentativa de captura",
+      manual: "Manual",
+      pokestop: "Pokestop",
+      healing: "Cura em Gin\xE1sio",
+      battle: "Batalha de Gin\xE1sio",
+      defending: "Gin\xE1sio ocupado",
+      pgp: "Go Plus",
+    },
+    ui: {
+      manualSave: "Salvar manualmente",
+      modalTitle: "O cooldown acabou",
+      modalBody: "Talvez",
+      tBlockThrowsTitle: "Evitar arremessos",
+      tBlockThrowsTip: "Evita arremessos durante o cooldown.",
+      tRocketTpTitle: "Rocket teleport",
+      tRocketTpTip:
+        "Teleporte-se ao local anterior para capturar Sombrosos enquanto estiver em CD (mais de 10 segundos).",
+    },
+  },
+};
+export default BrazilianPortuguese;

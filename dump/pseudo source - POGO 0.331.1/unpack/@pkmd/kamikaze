@@ -1,0 +1,178 @@
+export const __esModule = true;
+export { kami };
+export { libmainscan };
+export { runKamiLoop };
+
+const memPatterns = [
+  "67 75 6d 2d 6a 73 2d 6c 6f 6f 70", // gum-js-loop
+  "67 6d 61 69 6e", // gmain
+  "47 4d 61 69 6e", // GMain
+  // "70 67 73 68 61 72 70", // pgsharp
+  // "69 50 6F 67 6F", // iPogo
+  // "66 72 69 64 61", // frida (too many false positives)
+  // "46 72 69 64 61", // Frida (too many false positives)
+];
+
+const skippedLibs = [
+  "atlas-64.so",
+  "atlas-32.so",
+  "ariadne-32.so",
+  "ariadne-64.so",
+  "libNianticLabsPlugin.so",
+];
+
+let createThread;
+function memscan(interval = 5000 /* 5e3 */, callback) {
+  for (let processedRanges = new Map(); ; ) {
+    Process.enumerateModules().forEach((mod) => {
+      if (
+        mod.name.endsWith(".so") &&
+        !skippedLibs.some((name) => mod.path.includes(name))
+      ) {
+        if (processedRanges.has(mod.path)) {
+          if (processedRanges.get(mod.path) == (mod.base, mod.size)) {
+            return;
+          }
+          processedRanges.delete(mod.path);
+        }
+        memPatterns.forEach((buf) => {
+          Memory.scan(mod.base, mod.size, buf, {
+            onMatch() {
+              const pattern = hexToAscii(buf);
+
+              const maybePromise = callback([
+                {
+                  type: "frida",
+                  module: mod.name,
+                  pattern,
+                  count: 1,
+                },
+              ]);
+
+              Promise.resolve(maybePromise).finally(() => {
+                const exitCallback = new NativeCallback(
+                  () => {
+                    callback([
+                      {
+                        type: "frida",
+                        module: mod.name,
+                        pattern,
+                        count: 1,
+                      },
+                    ]);
+                  },
+                  "pointer",
+                  ["pointer", "pointer", "pointer", "pointer"]
+                );
+
+                const skippedThread = Memory.alloc(Process.pointerSize);
+                createThread(skippedThread, NULL, exitCallback, NULL);
+                kami(skippedThread);
+              });
+
+              return "stop";
+            },
+            onError() {},
+            onComplete() {},
+          });
+
+          processedRanges.set(mod.path, (mod.base, mod.size));
+        });
+      }
+    });
+
+    Thread.sleep(interval / 1000 /* 1e3 */);
+  }
+}
+function kami(skippedThread = undefined) {
+  const getCurrentThread = new NativeFunction(
+    Module.findExportByName("libc.so", "pthread_self"),
+    "pointer",
+    []
+  );
+
+  const threadEqual = new NativeFunction(
+    Module.findExportByName("libc.so", "pthread_equal"),
+    "int",
+    ["pointer", "pointer"]
+  );
+
+  Interceptor.attach(Module.findExportByName(null, "memcpy"), (args) => {
+    // this condition allows the thread that's running the
+    // callback to finish execution without being killed
+    const isFinalCallbackThread =
+      !!skippedThread &&
+      !!threadEqual(
+        getCurrentThread().readPointer(),
+        skippedThread.readPointer()
+      );
+
+    if (!isFinalCallbackThread) {
+      args[0] = NULL;
+      args[1] = NULL;
+    }
+  });
+}
+function libmainscan(callback) {
+  const libso = Process.findModuleByName("libmain.so");
+  if (5000000 /* 5e6 */ < (libso == null || libso.size)) {
+    const matches = new Set();
+    const values = {};
+    values.module = "libmain.so";
+    values.value = libso.size;
+    let count = Memory.scanSync(
+      libso.base,
+      libso.size,
+      "70 67 73 68 61 72 70"
+    ).length;
+
+    if (count) {
+      values.pattern = hexToAscii("70 67 73 68 61 72 70");
+      values.count = count;
+      values.type = "pgsharp";
+    } else {
+      count = Memory.scanSync(libso.base, libso.size, "69 50 6F 67 6F").length;
+
+      count
+        ? ((values.pattern = hexToAscii("69 50 6F 67 6F")),
+          (values.count = count),
+          (values.type = "ipogo"))
+        : ((values.count = 0), (values.type = "unknown"));
+    }
+
+    matches.add(values);
+
+    callback(matches).finally(() => {
+      kami();
+    });
+  }
+}
+function runKamiLoop(interval = 500, callback = () => undefined) {
+  const threadCallback = new NativeCallback(
+    () => {
+      // pgsharp and ipogo
+      // frida (pac and strongr etc)
+      libmainscan(callback);
+
+      memscan(interval, callback);
+    },
+    "pointer",
+    ["pointer", "pointer", "pointer", "pointer"]
+  );
+
+  createThread = new NativeFunction(
+    Module.findExportByName("libc.so", "pthread_create"),
+    "pointer",
+    ["pointer", "pointer", "pointer", "pointer"]
+  );
+
+  createThread(Memory.alloc(Process.pointerSize), NULL, threadCallback, NULL);
+}
+function hexToAscii(str1) {
+  const hex = str1.toString().replace(/ /g, "");
+  let str = "";
+  for (let n = 0; n < hex.length; n += 2) {
+    str += String.fromCharCode(parseInt(hex.substr(n, 2), 16));
+  }
+  return str;
+}

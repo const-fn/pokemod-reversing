@@ -1,0 +1,26 @@
+export default {
+  name: "@pkmd/ditto",
+  version: "9.6.93",
+  description:
+    "Abstraction layer for frida instrumentation of Unity Il2Cpp Android games",
+  private: false,
+  main: "src/index.js",
+  types: "index.d.ts",
+  scripts: {
+    build: "npx frida-compile src/index.js -o _agent.js",
+    watch: "npx frida-compile src/index.js -o _agent.js -w",
+  },
+  devDependencies: {
+    "@types/frida-gum": "^18.7.0",
+    "@types/node": "^17.0.23",
+    eslint: "^8.57.0",
+  },
+  dependencies: {
+    "@pkmd/console": "^2.4.4",
+  },
+  type: "module",
+  publishConfig: {
+    "@pkmd:registry":
+      "https://gitlab.com/api/v4/projects/37518847/packages/npm/",
+  },
+};

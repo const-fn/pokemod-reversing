@@ -1,0 +1,586 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const ObjectInstance_1 = __importDefault(require("../utils/ObjectInstance"));
+const I18n_1 = __importDefault(require("../utils/I18n"));
+
+const CP_MULTIPLIERS = [
+  0.094, 0.1351374318, 0.16639787, 0.192650919, 0.21573247, 0.2365726613,
+  0.25572005, 0.2735303812, 0.29024988, 0.3060573775, 0.3210876, 0.3354450362,
+  0.34921268, 0.3624577511, 0.3752356, 0.387592416, 0.39956728, 0.4111935514,
+  0.4225, 0.4329264091, 0.44310755, 0.4530599591, 0.4627984, 0.472336093,
+  0.48168495, 0.4908558003, 0.49985844, 0.508701765, 0.51739395, 0.5259425113,
+  0.5343543, 0.5426357375, 0.5507927, 0.5588305862, 0.5667545, 0.5745691333,
+  0.5822789, 0.5898879072, 0.5974, 0.6048236651, 0.6121573, 0.6194041216,
+  0.6265671, 0.6336491432, 0.64065295, 0.6475809666, 0.65443563, 0.6612192524,
+  0.667934, 0.6745818959, 0.6811649, 0.6876849038, 0.69414365, 0.70054287,
+  0.7068842, 0.7131691091, 0.7193991, 0.7255756136, 0.7317, 0.7347410093,
+  0.7377695, 0.7407855938, 0.74378943, 0.7467812109, 0.74976104, 0.7527290867,
+  0.7556855, 0.7586303683, 0.76156384, 0.7644861, 0.76739717, 0.7702973,
+  0.7731865, 0.77606493, 0.77893275, 0.7817901, 0.784637, 0.78747356, 0.7903,
+  0.79280394, 0.7953, 0.79780394, 0.8003, 0.8028039, 0.8053, 0.80780387, 0.8103,
+  0.81280386, 0.8153, 0.8178038, 0.8203, 0.8228038, 0.8253, 0.82780373, 0.8303,
+  0.8328037, 0.8353, 0.8378038, 0.8403, 0.84279999, 0.8453,
+];
+
+const CP_MULTIPLIERS_POW2 = [
+  0.008836, 0.018262125473499653, 0.027688251140536902, 0.03711437659154456,
+  0.046540498612300904, 0.055966624074564514, 0.06539274397200248,
+  0.07481886943941732, 0.08424499284001441, 0.0936711183221775,
+  0.10309724687375998, 0.11252337231121931, 0.12194949587278239,
+  0.13137562133246955, 0.14080175550736, 0.15022788094071704,
+  0.15965401124659842, 0.16908013671294447, 0.17850624999999998,
+  0.18742527569622058, 0.19634430086700252, 0.2052633265396937,
+  0.21418235904256, 0.22310138475050467, 0.2320203910565025,
+  0.24093941668815347, 0.24985846003923362, 0.2587774857141152,
+  0.2676964994966025, 0.27661552519255067, 0.28553451792848994,
+  0.29445354361216897, 0.30337259837329, 0.31229162407263567,
+  0.32121066327025005, 0.3301296889411132, 0.33904871738521003,
+  0.34796774306079575, 0.35688676, 0.3658116658649969, 0.37473655994329,
+  0.3836614658550676, 0.39258633080241007, 0.4015112366780941,
+  0.4104362023437025, 0.41936110830259027, 0.42828599381349697,
+  0.4372108997444149, 0.446135828356, 0.4550607342760384, 0.46398562099200996,
+  0.47291052691441526, 0.4818354068353225, 0.49076031270783693,
+  0.49968527220963993, 0.5086101781744876, 0.5175350650808099,
+  0.5264599710510165, 0.53538489, 0.5398443507471826, 0.5443038351302499,
+  0.5487632959816185, 0.5532227161797248, 0.5576821769532704,
+  0.5621416171018816, 0.5666010779642162, 0.57106057491025, 0.5755200357069936,
+  0.5799794823955456, 0.5844389970932099, 0.5888984165240089,
+  0.5933579303872899, 0.59781736378225, 0.6022767755759049, 0.6067362290225624,
+  0.61119576045801, 0.615655221769, 0.6201146076990737, 0.62457409,
+  0.6285380872795235, 0.63250209, 0.6364911266795236, 0.6404800900000001,
+  0.64449410185521, 0.64850809, 0.6525470923869768, 0.65658609,
+  0.6606501148308996, 0.66471409, 0.66880305529444, 0.67289209,
+  0.67700609329444, 0.6811200900000001, 0.6852590154019128, 0.6893980900000001,
+  0.6935620027336901, 0.6977260900000001, 0.70191520729444, 0.7061040900000001,
+  0.7103118231440002, 0.7145320900000001,
+];
+
+const CP_MULTIPLIERS_POW4 = [
+  0.000078074896 /* 78074896e-12 */, 0.00033350522680984494,
+  0.000766639251221443, 0.0013774769497789908, 0.0021660180110815823,
+  0.0031322630103036244, 0.004276210964187867, 0.005597863224192575,
+  0.007097218818614079, 0.008774278407727378, 0.010629042312949012,
+  0.012661509316289277, 0.01487167954362577, 0.01725955388049243,
+  0.019825134353954377, 0.022568416211938253, 0.025489403307128976,
+  0.028588092630867992, 0.03186448128906249, 0.035128233969804294,
+  0.03855108448295201, 0.042133033222140924, 0.045874082925036086,
+  0.04977422787759272, 0.05383346186601234, 0.058051802514027646,
+  0.0624292500531773, 0.06696578711251909, 0.07166141584273451,
+  0.07651614877755064, 0.08152996092865514, 0.08670288934576349,
+  0.09203493344376153, 0.0975260584659244, 0.10317629019851396,
+  0.10898561152035617, 0.11495403276055602, 0.12108155021082397,
+  0.12736815946329763, 0.13381817488292416, 0.14042748935813099,
+  0.1471961203820592, 0.15412402713289935, 0.16121127317877249,
+  0.16845787619432068, 0.17586373915677683, 0.18342889249681477,
+  0.19115337085532083, 0.1990371773428943, 0.2070802718798472,
+  0.21528265648734113, 0.22364436646646987, 0.23216535928016074,
+  0.24084568452909388, 0.24968537126322196, 0.25868431334268405,
+  0.26784254358819815, 0.2771601011190371, 0.2866369804403121,
+  0.2914319230336471, 0.2962666649374983, 0.3011411550166095,
+  0.30605537369727237, 0.3110094104913388, 0.31600319767791846,
+  0.3210367815502118, 0.3261101802168252, 0.3312233115001792,
+  0.33637619999980506, 0.341568941323317, 0.34680134498448506,
+  0.352073633553488, 0.3573856004395591, 0.36273731439810886,
+  0.3681288516085193, 0.3735602576018452, 0.37903135209143657,
+  0.38454212668177606, 0.39009279389932805, 0.395060127161002,
+  0.4000588938543681, 0.4051209543417693, 0.4102147456864082,
+  0.41537264732615387, 0.4205627427954481, 0.4258177077826977,
+  0.43110529358148814, 0.43645857422608086, 0.44184482144452814,
+  0.4472975267711777, 0.45278376478456817, 0.45833725035779993,
+  0.4639245770016082, 0.469579918189599, 0.4752697264956482,
+  0.48102825163596713, 0.48682169666668823, 0.4926849582311967,
+  0.4985829859147282, 0.5045428860981535, 0.5105561076397682,
+];
+
+const IVs_matchup = [];
+for (let IVatk_m = 0; IVatk_m <= 15; IVatk_m++) {
+  for (let IVdef_m = 0; IVdef_m <= 15; IVdef_m++) {
+    for (let IVsta_m = 0; IVsta_m <= 15; IVsta_m++) {
+      IVs_matchup.push({ ATK: IVatk_m, DEF: IVdef_m, STA: IVsta_m });
+    }
+  }
+}
+const pokemonId_Forms = { 800: [2717, 2718, 2719] };
+const pokemonName_Forms = { 2718: "Dusk Mane", 2719: "Dawn Wings" };
+class PVPMetrics extends ModuleBase_1.default {
+  constructor() {
+    super();
+  }
+  init() {
+    super.init();
+    this._Vector2 = ditto_1.default.use("UnityEngine.Vector2");
+    this._Object = ditto_1.default.use("UnityEngine.Object");
+    this._Text = ditto_1.default.use("UnityEngine.UI.Text");
+
+    this._ToastServiceInst = new ObjectInstance_1.default(
+      "Niantic.Holoholo.UI.ToastService"
+    );
+
+    this.gameMasterData = null;
+    this.hookEncounterNameplates();
+    this.hookPokemonPanels();
+    this.hookInCombat();
+  }
+  hookEncounterNameplates() {
+    const self = this;
+    ditto_1.default
+      .use("Niantic.Holoholo.Encounter.EncounterNameplate")
+      .SetPokemonUI.attach({
+        onEnter(args) {
+          const [mapPokemon] = args;
+          this._pokemonProto = !~mapPokemon.$className.indexOf("WildMapPokemon")
+            ? mapPokemon.get_Pokemon()
+            : mapPokemon.encounterProto.pokemon_.pokemon_;
+        },
+        onLeave() {
+          self.gameMasterData =
+            self.gameMasterData || this.playerService.gameMaster;
+
+          if (!this._pokemonProto) {
+            return;
+          }
+
+          const encounterPokemonRank = getEvolutionsRanks(
+            this._pokemonProto,
+            self.gameMasterData
+          );
+
+          const thisRTR = this.base.base.base.get_transform();
+          const parentRTR = thisRTR.base.get_parent();
+
+          const rankDisplay = self.generateRankDisplay(
+            encounterPokemonRank,
+            "encounter"
+          );
+
+          if (encounterPokemonRank && rankDisplay.length) {
+            let pvpStatsRTR = parentRTR.base.Find("PVPMetrics");
+
+            if (!pvpStatsRTR) {
+              self._Object.Instantiate(
+                self._ToastServiceInst.value.lineToastPrefab.panelRectTransform,
+                parentRTR.base
+              );
+            }
+
+            const pvpStatsGO = pvpStatsRTR.base.base.get_gameObject();
+            pvpStatsGO.set_active(true);
+            pvpStatsGO.base.set_name("PVPMetrics");
+            const pvpStatsText = pvpStatsGO.GetComponentsInChildren(
+              self._Text.typeof
+            )[0];
+            pvpStatsText.set_supportRichText(true);
+            pvpStatsText.set_alignment(7);
+            pvpStatsText.set_fontSize(0);
+            pvpStatsText.set_text(rankDisplay.join("\n"));
+            pvpStatsRTR.set_anchoredPosition(self._Vector2.$new(0, 450));
+          } else if (parentRTR.base.Find("PVPMetrics")) {
+            const pvpStatsRTR = parentRTR.base.Find("PVPMetrics");
+            const pvpStatsGO = pvpStatsRTR.base.base.get_gameObject();
+            pvpStatsGO.set_active(false);
+          }
+        },
+      });
+  }
+  hookPokemonPanels() {
+    const self = this;
+    ditto_1.default
+      .use("Niantic.Holoholo.UI.Pokemon.PokemonInfoPanel")
+      .DoUpdate.attach({
+        onEnter(args) {
+          this._pokemonProto = args[0];
+        },
+        onLeave() {
+          self.gameMasterData = self.gameMasterData || this.gameMasterData;
+
+          if (!!this._pokemonProto) {
+            const panelPokemonRank = getEvolutionsRanks(
+              this._pokemonProto,
+              self.gameMasterData
+            );
+            if (panelPokemonRank) {
+              const rankDisplay = self.generateRankDisplay(
+                panelPokemonRank,
+                "panel"
+              );
+              if (panelPokemonRank && rankDisplay.length) {
+                const KmWalkGameObject =
+                  this.totalKmWalkedLabel.base[
+                    "UnityEngine.UI.IClippable.get_gameObject"
+                  ]();
+                this.totalKmWalkedLabel.set_supportRichText(true);
+                this.totalKmWalkedLabel.set_verticalOverflow(1);
+                this.totalKmWalkedLabel.set_horizontalOverflow(1);
+                this.totalKmWalkedLabel.set_alignment(4);
+                this.totalKmWalkedLabel.set_lineSpacing(1.2);
+                this.totalKmWalkedLabel.set_fontSize(0);
+                const rankString = rankDisplay.join("\n");
+                if (!KmWalkGameObject.get_active()) {
+                  KmWalkGameObject.set_active(true);
+
+                  this.totalKmWalkedLabel.set_text(
+                    `<size=26>${rankString}</size>`
+                  );
+                } else {
+                  const KmWalkedLabel = this.totalKmWalkedLabel.get_text();
+                  this.totalKmWalkedLabel.set_text(
+                    `<size=26>${
+                      KmWalkedLabel.length
+                        ? `${rankString}\n\n${KmWalkedLabel}`
+                        : rankString
+                    }</size>`
+                  );
+                }
+              } else {
+                this.totalKmWalkedLabel.set_fontSize(26);
+              }
+            }
+          }
+        },
+      });
+  }
+  hookInCombat() {
+    ditto_1.default
+      .use("Niantic.Holoholo.Combat.UI.CombatChargeAttackDisplay")
+      .SetMove.attach({
+        onEnter(args) {
+          this._moveID = args[0];
+        },
+        onLeave() {
+          if (!this.moveSettings) {
+            return;
+          }
+          const CombatMoveSettingsProto = this.moveSettings;
+          const CombatMoveSettingsProto_energyDelta =
+            CombatMoveSettingsProto.energyDelta_;
+          const MoveName = I18n_1.default.unity.getMoveNameFromId(this._moveID);
+          const MoveNameEnergy = `${MoveName}\n (${CombatMoveSettingsProto_energyDelta})`;
+          this.attackName.set_text(MoveNameEnergy);
+          this.attackNameShadow.set_text(MoveNameEnergy);
+        },
+      });
+  }
+  generateRankDisplay(pokemonRanks, type = "encounter") {
+    const rankDisplay = [];
+    if (!pokemonRanks) {
+      return rankDisplay;
+    }
+    for (let i = 0, max_loop = pokemonRanks.length; i < max_loop; i++) {
+      const pokemonRanks_i = pokemonRanks[i];
+      if (
+        !pokemonRanks_i[500] &&
+        !pokemonRanks_i[1500] &&
+        !pokemonRanks_i[2500]
+      ) {
+        continue;
+      }
+      let currentRank = `${pokemonRanks_i.Name}:`;
+      if (type == "panel") {
+        if (pokemonRanks_i[500]) {
+          const rankLC_color =
+            pokemonRanks_i[500].rank <= 10
+              ? "#8acd90"
+              : pokemonRanks_i[500].rank <= 50
+              ? "#eecb55"
+              : null;
+          currentRank += ` <size=18>LL</size>${
+            rankLC_color
+              ? `<color=${rankLC_color}>${pokemonRanks_i[500].rank}<size=18>(${pokemonRanks_i[500].perfection}%)</size></color>`
+              : `${pokemonRanks_i[500].rank}<size=18>(${pokemonRanks_i[500].perfection}%)</size>`
+          }`;
+        }
+        if (pokemonRanks_i[1500]) {
+          const rankGL_color =
+            pokemonRanks_i[1500].rank <= 10
+              ? "#8acd90"
+              : pokemonRanks_i[1500].rank <= 50
+              ? "#eecb55"
+              : null;
+          currentRank += ` <size=18>GL</size>${
+            rankGL_color
+              ? `<color=${rankGL_color}>${pokemonRanks_i[1500].rank}<size=18>(${pokemonRanks_i[1500].perfection}%)</size></color>`
+              : `${pokemonRanks_i[1500].rank}<size=18>(${pokemonRanks_i[1500].perfection}%)</size>`
+          }`;
+        }
+        if (pokemonRanks_i[2500]) {
+          const rankUL_color =
+            pokemonRanks_i[2500].rank <= 10
+              ? "#8acd90"
+              : pokemonRanks_i[2500].rank <= 50
+              ? "#eecb55"
+              : null;
+          currentRank += ` <size=18>UL</size>${
+            rankUL_color
+              ? `<color=${rankUL_color}>${pokemonRanks_i[2500].rank}<size=18>(${pokemonRanks_i[2500].perfection}%)</size></color>`
+              : `${pokemonRanks_i[2500].rank}<size=18>(${pokemonRanks_i[2500].perfection}%)</size>`
+          }`;
+        }
+      } else {
+        if (pokemonRanks_i[500]) {
+          const rankLC_color =
+            pokemonRanks_i[500].rank <= 10
+              ? "#8acd90"
+              : pokemonRanks_i[500].rank <= 50
+              ? "#eecb55"
+              : "#ffffff";
+          currentRank += ` <size=18>LL</size><color=${rankLC_color}>#${pokemonRanks_i[500].rank}</color>`;
+        }
+        if (pokemonRanks_i[1500]) {
+          const rankGL_color =
+            pokemonRanks_i[1500].rank <= 10
+              ? "#8acd90"
+              : pokemonRanks_i[1500].rank <= 50
+              ? "#eecb55"
+              : "#ffffff";
+          currentRank += ` <size=18>GL</size><color=${rankGL_color}>#${pokemonRanks_i[1500].rank}</color>`;
+        }
+        if (pokemonRanks_i[2500]) {
+          const rankUL_color =
+            pokemonRanks_i[2500].rank <= 10
+              ? "#8acd90"
+              : pokemonRanks_i[2500].rank <= 50
+              ? "#eecb55"
+              : "#ffffff";
+          currentRank += ` <size=18>UL</size><color=${rankUL_color}>#${pokemonRanks_i[2500].rank}</color>`;
+        }
+      }
+      rankDisplay.push(currentRank);
+    }
+    return rankDisplay;
+  }
+}
+export default PVPMetrics;
+function get_Rank(pokemon, league = 2500) {
+  const {
+    max_cp = 2500,
+    IV_atk = 15,
+    IV_def = 15,
+    IV_sta = 15,
+    base_atk = 0,
+    base_def = 0,
+    base_sta = 0,
+  } = pokemon;
+  if (max_cp > league) {
+    return null;
+  }
+
+  const arr_SearchBinary = (array, multiple) => {
+    let m = 0;
+    let n = array.length - 1;
+
+    while (m <= n) {
+      const key = (n + m) >> 1;
+      if (array[key] < multiple) {
+        m = key + 1;
+      } else if (array[key] > multiple) {
+        n = key - 1;
+      } else {
+        return key;
+      }
+    }
+
+    return m - 1;
+  };
+
+  const maxLvl = 98;
+  const products = [];
+  for (let i = 0, max_loop = IVs_matchup.length; i < max_loop; i++) {
+    const IVs_matchup_i = IVs_matchup[i];
+    const atk = (base_atk << 0) + IVs_matchup_i.ATK;
+    const def = (base_def << 0) + IVs_matchup_i.DEF;
+    const sta = (base_sta << 0) + IVs_matchup_i.STA;
+
+    const possible_lvl_iv = arr_SearchBinary(
+      CP_MULTIPLIERS_POW4,
+      (100 * ((league + 1) * (league + 1))) / (atk * atk * def * sta)
+    );
+
+    const lvl_iv = possible_lvl_iv > maxLvl ? maxLvl : possible_lvl_iv;
+
+    const stat_prod =
+      CP_MULTIPLIERS_POW2[lvl_iv] *
+      atk *
+      def *
+      ((CP_MULTIPLIERS[lvl_iv] * sta) << 0);
+
+    products.push({
+      product: stat_prod,
+      IVatk: IVs_matchup_i.ATK,
+      IVdef: IVs_matchup_i.DEF,
+      IVsta: IVs_matchup_i.STA,
+    });
+  }
+  products.sort((a, b) => b.product - a.product);
+  let pvpRank = null;
+  for (let i = 0, max_loop = products.length; i < max_loop; i++) {
+    const products_i = products[i];
+
+    if (
+      products_i.IVatk == IV_atk &&
+      products_i.IVdef == IV_def &&
+      products_i.IVsta == IV_sta
+    ) {
+      pvpRank = i + 1;
+    }
+  }
+  const atk = (base_atk << 0) + IV_atk;
+  const def = (base_def << 0) + IV_def;
+  const sta = (base_sta << 0) + IV_sta;
+
+  const possible_lvl = arr_SearchBinary(
+    CP_MULTIPLIERS_POW4,
+    (100 * ((league + 1) * (league + 1))) / (atk * atk * def * sta)
+  );
+
+  const lvl = possible_lvl > maxLvl ? maxLvl : possible_lvl;
+
+  const stat_prod =
+    CP_MULTIPLIERS_POW2[lvl] * atk * def * ((CP_MULTIPLIERS[lvl] * sta) << 0);
+
+  const perfection =
+    ((0.5 + 100000 /* 1e5 */ * (stat_prod / products[0].product)) << 0) /
+    1000; /* 1e3 */
+  if (pvpRank === null) {
+    for (let i = 0, max_loop = products.length; i < max_loop; i++) {
+      if (products[i].product > stat_prod) {
+        pvpRank = i;
+      }
+    }
+  }
+  return { rank: pvpRank, perfection: perfection.toFixed(2) };
+}
+function getPokemonRanks(pokemon) {
+  const pokemonName =
+    pokemon.form != null && pokemon.form in pokemonName_Forms
+      ? `Form: ${pokemonName_Forms[pokemon.form]}`
+      : I18n_1.default.unity.getPokemonNameFromId(pokemon.id);
+
+  const ranks = {
+    Name: pokemonName,
+    500: get_Rank(pokemon, 500),
+    1500: get_Rank(pokemon, 1500),
+    2500: get_Rank(pokemon, 2500),
+  };
+
+  return ranks;
+}
+function getEvolutionsRanks(pokemonProto, gameMasterData = null) {
+  function getGBLPokemon(pokemon_id, max_cp, settingsProto, form_id = null) {
+    return {
+      id: pokemon_id,
+      form: form_id,
+      max_cp,
+      IV_atk: individualAttack_,
+      IV_def: individualDefense_,
+      IV_sta: individualStamina_,
+      base_atk: settingsProto.stats_.baseAttack_,
+      base_def: settingsProto.stats_.baseDefense_,
+      base_sta: settingsProto.stats_.baseStamina_,
+      parentID: settingsProto.parentId_,
+    };
+  }
+  const gblPokemons = [];
+
+  const { individualAttack_, individualDefense_, individualStamina_ } =
+    pokemonProto;
+
+  const cpMultiplierSqr =
+    (pokemonProto.cpMultiplier_ + pokemonProto.additionalCpMultiplier_) ** 2;
+
+  const getEvolutions = (gblPokemon, evolutions) => {
+    for (const evolutionProto of evolutions) {
+      const id = evolutionProto == null || evolutionProto.evolution_;
+      if (id) {
+        const pokemonSettings = evolutionProto.form_
+          ? gameMasterData.Get_PokemonSettings(id, evolutionProto.form_)
+          : gameMasterData.Get_PokemonSettings(id);
+
+        const stats = pokemonSettings == null || pokemonSettings.stats_;
+        if (stats) {
+          const evolutionCP =
+            Math.max(
+              10,
+              ((individualAttack_ + stats.baseAttack_) *
+                Math.sqrt(individualDefense_ + stats.baseDefense_) *
+                Math.sqrt(individualStamina_ + stats.baseStamina_) *
+                cpMultiplierSqr) /
+                10
+            ) << 0;
+
+          const newGBLPokemon = getGBLPokemon(id, evolutionCP, pokemonSettings);
+          gblPokemons.push(newGBLPokemon);
+
+          getEvolutions(newGBLPokemon, pokemonSettings.evolutionBranch_.array);
+        }
+      }
+    }
+  };
+
+  const getForms = (pokemon_id, forms, current_form) => {
+    for (const form_id of forms) {
+      if (form_id === current_form) {
+        continue;
+      }
+
+      const pokemonSettings = gameMasterData.Get_PokemonSettings(
+        pokemon_id,
+        form_id
+      );
+
+      const stats = pokemonSettings == null || pokemonSettings.stats_;
+      if (stats) {
+        const formCP =
+          Math.max(
+            10,
+            ((individualAttack_ + stats.baseAttack_) *
+              Math.sqrt(individualDefense_ + stats.baseDefense_) *
+              Math.sqrt(individualStamina_ + stats.baseStamina_) *
+              cpMultiplierSqr) /
+              10
+          ) << 0;
+
+        const newGBLPokemon = getGBLPokemon(
+          pokemon_id,
+          formCP,
+          pokemonSettings,
+          form_id
+        );
+
+        gblPokemons.push(newGBLPokemon);
+      }
+    }
+  };
+
+  const settingsProto = pokemonProto.get_settingsProto();
+  if (settingsProto != null && settingsProto.stats_) {
+    const gblPokemon = getGBLPokemon(
+      pokemonProto.pokemonId_,
+      pokemonProto.cp_,
+      settingsProto
+    );
+    gblPokemons.push(gblPokemon);
+
+    if (pokemonProto.pokemonId_ in pokemonId_Forms) {
+      let _pokemonProto$pokemon;
+      const current_form =
+        pokemonProto == null ||
+        null == (_pokemonProto$pokemon = pokemonProto.pokemonDisplay_) ||
+        _pokemonProto$pokemon.form_;
+
+      if (current_form) {
+        getForms(
+          pokemonProto.pokemonId_,
+          pokemonId_Forms[pokemonProto.pokemonId_],
+          current_form
+        );
+      }
+    }
+
+    getEvolutions(gblPokemon, settingsProto.evolutionBranch_.array);
+
+    return gblPokemons.map((pokemon) => getPokemonRanks(pokemon));
+  }
+}
+export { getEvolutionsRanks };

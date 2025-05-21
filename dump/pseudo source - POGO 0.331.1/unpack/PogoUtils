@@ -1,0 +1,674 @@
+import ButtonUtils_1 from "./ButtonUtils";
+import ToggleUtils_1 from "./ToggleUtils";
+import MenuUtils_1 from "./MenuUtils";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ObjectInstance_1 = __importDefault(require("./ObjectInstance"));
+const I18n_1 = __importDefault(require("./I18n"));
+const UnityUtils_1 = __importDefault(require("./UnityUtils"));
+
+export const ButtonEvents = {
+  BUTTON_EVENT_TYPE_OK: 1,
+  BUTTON_EVENT_TYPE_CANCEL: 2,
+  BUTTON_EVENT_TYPE_ALT_OPTION: 3,
+  BUTTON_EVENT_TYPE_OPTION_A: 4,
+  BUTTON_EVENT_TYPE_OPTION_B: 5,
+  BUTTON_EVENT_TYPE_OPTION_C: 6,
+  BUTTON_EVENT_TYPE_OPTION_D: 7,
+  BUTTON_EVENT_TYPE_OPTION_E: 8,
+};
+
+class PogoUtils {
+  static init() {
+    const self = this;
+
+    this.userPromptsServiceInstance = new ObjectInstance_1.default(
+      "Niantic.Holoholo.UI.UserPromptsService",
+      "HasActiveModal"
+    );
+
+    this._sceneRegistryInst = new ObjectInstance_1.default(
+      "Zenject.SceneContextRegistry",
+      "Add"
+    );
+
+    this.modalButton = ditto_1.default.use("ModalButton");
+
+    this.warningModalData = ditto_1.default.use(
+      "Niantic.Holoholo.UI.WarningModalData"
+    );
+
+    this.dittoPlugin = ditto_1.default.use(
+      "Niantic.Platform.Ditto.Plugin.DittoPlugin"
+    );
+
+    this._SceneManager = ditto_1.default.use(
+      "UnityEngine.SceneManagement.SceneManager"
+    );
+
+    this._DarkTutorialModalData = ditto_1.default.use(
+      "Niantic.Holoholo.UI.DarkTutorialModal/Data"
+    );
+
+    ditto_1.default
+      .use("Niantic.Holoholo.UI.BaseModalDialog")
+      .ButtonPressed.replace(function (modalEvent) {
+        let _this$titleText;
+        let _this$titleText2;
+        let _self$modalCbHolder$g;
+        let titleText = "";
+
+        if (
+          "Text" ==
+          (null == (_this$titleText = this.titleText) ||
+            _this$titleText.$className)
+        ) {
+          titleText = this.titleText.m_Text;
+        } else if (
+          "HoloText" ==
+          (null == (_this$titleText2 = this.titleText) ||
+            _this$titleText2.$className)
+        ) {
+          titleText = this.titleText.base.m_Text;
+        }
+
+        const cb =
+          null == (_self$modalCbHolder$g = self.modalCbHolder.get(titleText)) ||
+          _self$modalCbHolder$g[modalEvent];
+
+        if (typeof cb == "function") {
+          cb();
+        }
+
+        return this.ButtonPressed(modalEvent);
+      });
+
+    ditto_1.default
+      .use("Niantic.Holoholo.UI.NumericalPickerDialog")
+      .ButtonPressed.replace(function (modalEvent) {
+        let _this$title;
+        let _this$title2;
+        let _self$modalCbHolder$g2;
+        let titleText = "";
+
+        if (
+          "Text" ==
+          (null == (_this$title = this.title) || _this$title.$className)
+        ) {
+          titleText = this.title.m_Text;
+        } else if (
+          "HoloText" ==
+          (null == (_this$title2 = this.title) || _this$title2.$className)
+        ) {
+          titleText = this.title.base.m_Text;
+        }
+
+        titleText = titleText.trim();
+
+        debug(
+          `NumericalPickerDialog.ButtonPressed: ${modalEvent} - "${titleText}"`
+        );
+
+        let keepOpen = false;
+        const cb =
+          null ==
+            (_self$modalCbHolder$g2 = self.modalCbHolder.get(titleText)) ||
+          _self$modalCbHolder$g2[modalEvent];
+
+        if (typeof cb == "function") {
+          keepOpen = cb(this.get_Value(), this);
+        }
+
+        if (!keepOpen) {
+          return this.ButtonPressed(modalEvent);
+        }
+      });
+
+    ditto_1.default
+      .use("Niantic.Holoholo.Storefront.StorefrontRedeemCategory")
+      .InputTextChanged.attach({
+        onEnter(args) {
+          const code = args[0].toLowerCase();
+          if (self.cheatCodesCbHolder.has(code)) {
+            let _self$cheatCodesCbHol;
+
+            if (
+              null !=
+              (_self$cheatCodesCbHol = self.cheatCodesCbHolder.get(code))
+            ) {
+              _self$cheatCodesCbHol();
+            }
+          }
+        },
+      });
+
+    this.buttons.init();
+    this.toggles.init();
+    this.menu.init();
+
+    PogoUtils.buttons.addButtonsToGroup("advanced_settings", [
+      {
+        id: "advanced_cheatcode",
+        name: "ui.advancedSettings.enterCheatcodeButton",
+        description: "",
+        callback: () => {
+          this.showInputModal(
+            "cheatcode_input",
+            I18n_1.default.getText("ui.advancedSettings.enterCheatcodeModal"),
+            (text) => {
+              const code = text.toLowerCase();
+              if (self.cheatCodesCbHolder.has(code)) {
+                let _self$cheatCodesCbHol2;
+
+                if (
+                  null !=
+                  (_self$cheatCodesCbHol2 = self.cheatCodesCbHolder.get(code))
+                ) {
+                  _self$cheatCodesCbHol2();
+                }
+              }
+            }
+          );
+        },
+      },
+    ]);
+
+    PogoUtils.addCheatCode("dQw4w9WgXcQ", () => {
+      UnityUtils_1.default.Application.OpenURL(
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+      );
+    });
+
+    const AdvancedSettingsGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.UI.AdvancedSettingsGuiController"
+    );
+    AdvancedSettingsGuiController.Initialize.attach({
+      onLeave() {
+        const toggles =
+          PogoUtils.toggles.getTogglesFromGroup("advanced_settings");
+
+        const buttons =
+          PogoUtils.buttons.getButtonsFromGroup("advanced_settings");
+        if (toggles.length > 0 || buttons.length > 0) {
+          const unityObject = ditto_1.default.use("UnityEngine.Object");
+          const unityText = ditto_1.default.use("UnityEngine.UI.Text");
+          const uiToggleGraphics = ditto_1.default.use("UIToggleGraphics");
+          const menuTransform = this.base.base.base.base.get_transform().base;
+
+          const viewportContentTransform = menuTransform
+            .GetChild(0)
+            .base.GetChild(2)
+            .base.GetChild(0)
+            .base.GetChild(0).base;
+
+          const qualityWidgetTransform =
+            viewportContentTransform.GetChild(1).base;
+
+          const newTogglesContainer = unityObject.Instantiate(
+            qualityWidgetTransform,
+            viewportContentTransform
+          );
+
+          const containerLabelGO = newTogglesContainer.base
+            .GetChild(0)
+            .base.base.get_gameObject();
+
+          const containerLabel = containerLabelGO.GetComponentInChildren(
+            unityText.typeof
+          );
+
+          const holoText =
+            containerLabel.$className == "I18nText"
+              ? containerLabel.base
+              : containerLabel;
+
+          holoText.textKey = "";
+          holoText.base.set_text("Pokemod");
+          const containerElementsTransform =
+            newTogglesContainer.base.GetChild(1).base;
+          for (let i = 1; i < containerElementsTransform.GetChildCount(); i++) {
+            const child = containerElementsTransform.GetChild(i);
+            const childGameObject = child.base.base.get_gameObject();
+            unityObject.Destroy(childGameObject);
+          }
+          if (buttons.length > 0) {
+            const unityButton = ditto_1.default.use("UnityEngine.UI.Button");
+
+            const buttonPrefabRT = qualityWidgetTransform
+              .GetChild(1)
+              .base.GetChild(1);
+
+            buttons.forEach((b) => {
+              const newButtonRT = unityObject.Instantiate(
+                buttonPrefabRT,
+                containerElementsTransform
+              );
+
+              const newButtonGO = newButtonRT.base.base.get_gameObject();
+
+              const buttonComponent = newButtonGO.GetComponentInChildren(
+                unityButton.typeof
+              );
+
+              buttonComponent.m_OnClick = null;
+
+              const texts = newButtonGO.GetComponentsInChildren(
+                unityText.typeof
+              );
+
+              const holoText0 =
+                texts[0].$className == "I18nText" ? texts[0].base : texts[0];
+
+              const holoText1 =
+                texts[1].$className == "I18nText" ? texts[1].base : texts[1];
+
+              holoText0.textKey = "";
+              holoText0.base.set_text(I18n_1.default.getText(b.name));
+              holoText1.textKey = "";
+              holoText1.base.set_text(I18n_1.default.getText(b.description));
+
+              if (!b.description) {
+                unityObject.Destroy(
+                  newButtonRT.base
+                    .GetChild(0)
+                    .base.GetChild(1)
+                    .base.base.get_gameObject()
+                );
+              }
+
+              PogoUtils.buttons.attachInstance({
+                id: b.id,
+                instance: buttonComponent.$instance.toString(),
+              });
+            });
+          }
+
+          if (toggles.length > 0) {
+            toggles.sort((a, b) => {
+              const a_name = a.name;
+              const b_name = b.name;
+              return a_name < b_name ? -1 : a_name > b_name ? 1 : 0;
+            });
+
+            toggles.forEach((t) => {
+              const toggleComponent = unityObject.Instantiate(
+                this.toggleOpenGiftsOnBagFull,
+                containerElementsTransform
+              );
+
+              const toggleGO =
+                toggleComponent.base.base.base.base.base.get_gameObject();
+
+              const toggleTexts = toggleGO.GetComponentsInChildren(
+                unityText.typeof
+              );
+
+              const toggleHoloText =
+                toggleTexts[0].$className == "I18nText"
+                  ? toggleTexts[0].base
+                  : toggleTexts[0];
+
+              toggleHoloText.textKey = "";
+              toggleHoloText.base.set_text(I18n_1.default.getText(t.name));
+              const tipHoloText =
+                toggleTexts[1].$className == "I18nText"
+                  ? toggleTexts[1].base
+                  : toggleTexts[1];
+              tipHoloText.textKey = "";
+              tipHoloText.base.set_supportRichText(true);
+
+              tipHoloText.base.set_text(I18n_1.default.getText(t.description));
+
+              toggleComponent.onValueChanged = null;
+              toggleComponent.Set(t.value, false);
+              const toggleUI = toggleGO.GetComponent(uiToggleGraphics.typeof);
+              PogoUtils.toggles.attachInstance({
+                id: t.id,
+                instance: toggleComponent.$instance.toString(),
+                toggleGraphics: toggleUI,
+              });
+            });
+          }
+        }
+      },
+    });
+    const MainMenuGuiController = ditto_1.default.use(
+      "Niantic.Holoholo.Map.UI.MainMenuGuiController"
+    );
+    MainMenuGuiController.OpenMenu.attach({
+      onLeave() {
+        if (self.mainMenuButtons.length < 1) {
+          return;
+        }
+
+        const mainMenuRectTransform =
+          this.base.base.base.base.base.get_transform();
+
+        const topMenu = mainMenuRectTransform.base.FindChild("TopMenu");
+        for (const b of self.mainMenuButtons) {
+          b.RectTransform = topMenu.base.FindChild(b.id);
+
+          if (!b.RectTransform) {
+            b.Button = undefined;
+            const settingsButton = topMenu.base.FindChild("ButtonSettings");
+            if (!settingsButton) {
+              return void log("Settings Button not found", "red");
+            }
+
+            b.RectTransform = UnityUtils_1.default.Object.Instantiate(
+              settingsButton,
+              topMenu,
+              true
+            );
+
+            b.RectTransform.base.base.base.set_name(b.id);
+            b.GameObject = b.RectTransform.base.base.get_gameObject();
+            b.GameObject.set_active(false);
+            const label = b.RectTransform.base.FindChild("TextLabel");
+
+            const labelText = label.base.base.GetComponentInChildren(
+              UnityUtils_1.default.UI.Text.typeof,
+              true
+            );
+
+            labelText.set_text(I18n_1.default.getText(b.name));
+
+            if (b.setIcon) {
+              const buttonIcon =
+                b.RectTransform.base.base.GetComponentsInChildren(
+                  UnityUtils_1.default.UI.Image.typeof,
+                  true
+                )[1];
+              b.setIcon(buttonIcon);
+            }
+          }
+
+          if (!b.Button) {
+            b.Button = b.RectTransform.base.base.GetComponentsInChildren(
+              UnityUtils_1.default.UI.Button.typeof,
+              true
+            )[0];
+            const event = UnityUtils_1.default.makeButtonClickedEvent(
+              `main_menu_${b.id}`,
+              () => {
+                this.CloseMenu();
+                b.callback();
+              }
+            );
+            b.Button.m_OnClick = event;
+
+            if (b.GameObject) {
+              b.GameObject.set_active(true);
+            }
+          }
+        }
+      },
+    });
+  }
+  static waitUntilComplete(coroutine) {
+    return new Promise((resolve, reject) => {
+      let _coroutine$assetPromi;
+      let _coroutine$base;
+      let _coroutine$assetPromi2;
+      let gamePromise;
+      let request;
+
+      if (coroutine != null && coroutine.$has("completedValue")) {
+        gamePromise = coroutine;
+      } else if (
+        coroutine.$has("assetPromise") &&
+        coroutine != null &&
+        null != (_coroutine$assetPromi = coroutine.assetPromise) &&
+        _coroutine$assetPromi.$has("completedValue")
+      ) {
+        gamePromise = coroutine.assetPromise;
+      } else if (
+        coroutine != null &&
+        null != (_coroutine$base = coroutine.base) &&
+        _coroutine$base.$has("completedValue")
+      ) {
+        gamePromise = coroutine.base;
+      }
+
+      if (coroutine != null && coroutine.$has("get_Completed")) {
+        request = coroutine;
+      } else if (
+        coroutine.$has("assetPromise") &&
+        coroutine != null &&
+        null != (_coroutine$assetPromi2 = coroutine.assetPromise) &&
+        _coroutine$assetPromi2.$has("get_Completed")
+      ) {
+        request = coroutine.assetPromise;
+      } else if (coroutine != null && coroutine.base.$has("get_Completed")) {
+        request = coroutine.base;
+      }
+
+      if (!request || !gamePromise) {
+        error("Can't find request or promise");
+        return void reject(new Error("Can't find request or promise"));
+      }
+
+      const check = () => {
+        if (request.get_Completed()) {
+          if (gamePromise.completedValue) {
+            resolve(gamePromise.completedValue);
+          } else if (gamePromise.errorValue) {
+            warn(`Coroutine raised error: ${gamePromise.errorValue}`);
+            reject(gamePromise.errorValue);
+          } else {
+            error("Promise was finished but no error or result is available");
+
+            reject(
+              new Error(
+                "Promise was finished but no error or result is available"
+              )
+            );
+          }
+        } else {
+          setTimeout(check, 50);
+        }
+      };
+      setTimeout(check);
+    });
+  }
+  static showWarningModal(title, body, buttons) {
+    const modalButtons = [];
+    const cbs = {};
+
+    buttons.forEach(({ callback, eventType, name }) => {
+      modalButtons.push(
+        this.modalButton.$new(
+          eventType,
+          name,
+          UnityUtils_1.default.makeGenericNullable("ButtonType")
+        )
+      );
+
+      if (typeof callback == "function") {
+        cbs[eventType] = callback;
+      }
+    });
+
+    this.modalCbHolder.set(title, cbs);
+    const ModalData = this.warningModalData.$new();
+    ModalData.title = title;
+    ModalData.mainText = body;
+    ModalData.extraText = "";
+    ModalData.closeable = true;
+    ModalData.noIdea = false;
+    ModalData.noIdea2 = false;
+    ModalData.buttons = modalButtons;
+    this.userPromptsServiceInstance.value.ShowWarningModal(ModalData);
+  }
+  static showModal(title, buttons) {
+    const modalButtons = [];
+    const cbs = {};
+
+    buttons.forEach(({ callback, eventType, name }) => {
+      modalButtons.push(
+        this.modalButton.$new(
+          eventType,
+          name,
+          UnityUtils_1.default.makeGenericNullable("ButtonType")
+        )
+      );
+
+      if (typeof callback == "function") {
+        cbs[eventType] = callback;
+      }
+    });
+
+    this.modalCbHolder.set(title, cbs);
+    const data = this._DarkTutorialModalData.$new();
+    data.Title = title;
+    data.Message = title;
+    data.Buttons = modalButtons;
+    this.userPromptsServiceInstance.value.ShowDarkTutorialModal(data);
+  }
+  static showInputModal(
+    id,
+    title,
+    calback,
+    defaultText = "",
+    maxCharacters = 50
+  ) {
+    const inputFactory = PogoUtils.DiContainer.Instantiate(
+      ditto_1.default.use(
+        "Niantic.Holoholo.UI.TextInputDialog/TextInputDialogFactory"
+      ).typeof
+    );
+    if (inputFactory) {
+      const input = inputFactory.Create("", defaultText, maxCharacters);
+      if (input) {
+        const inputHoloText =
+          input.promptText.$className == "I18nText"
+            ? input.promptText.base
+            : input.promptText;
+        inputHoloText.textKey = "";
+        inputHoloText.base.set_text(title);
+
+        const specificActionType =
+          UnityUtils_1.default.System.ActionGeneric2.typeof.MakeGenericType([
+            input.typeof,
+            UnityUtils_1.default.System.String.typeof,
+          ]);
+
+        const specificActionClass = ditto_1.default.Core.createObject(
+          ditto_1.default.Il2cppApi.class_from_system_type(
+            specificActionType.$instance
+          )
+        );
+
+        const specificActionKlass = ditto_1.default.wrap(specificActionClass);
+
+        const nc = new NativeCallback(
+          (method_code, inputModalPtr, stringPtr) => {
+            const stringInst = ditto_1.default.wrap(stringPtr);
+            const text = stringInst.ToString();
+            calback(text);
+            input.base.base.Dismiss();
+          },
+          "void",
+          ["pointer", "pointer", "pointer", "pointer"]
+        );
+
+        UnityUtils_1.default.callbacks_.set(id, nc);
+        const delegateInstance = specificActionKlass.$new(input, nc);
+        delegateInstance.base.base.method_ptr =
+          delegateInstance.base.base.method;
+        delegateInstance.base.base.invoke_impl =
+          delegateInstance.base.base.method;
+        delegateInstance.base.base.delegate_trampoline = null;
+        delegateInstance.base.base.method_code = null;
+        delegateInstance.base.base.m_target = null;
+        input.SubmitText = delegateInstance;
+      }
+    }
+  }
+  static showOneTimeModal() {}
+  static ShowNumericalPicker(
+    message,
+    startingValue,
+    minValue,
+    maxValue,
+    buttons
+  ) {
+    const cbs = {};
+    const modalButtons = [];
+
+    buttons.forEach(({ callback, eventType, name }) => {
+      modalButtons.push(
+        this.modalButton.$new(
+          eventType,
+          name,
+          UnityUtils_1.default.makeGenericNullable("ButtonType")
+        )
+      );
+
+      if (typeof callback == "function") {
+        cbs[eventType] = callback;
+      }
+    });
+
+    this.modalCbHolder.set(`${message}`, cbs);
+
+    setTimeout(() => {
+      this.Update(() => {
+        this.userPromptsServiceInstance.value.ShowNumericalPicker(
+          message,
+          null,
+          null,
+          null,
+          startingValue,
+          minValue,
+          maxValue,
+          modalButtons
+        );
+      });
+    }, 100);
+  }
+  static Update(cb) {
+    return this.dittoPlugin.Update.probe(() => {
+      cb();
+    });
+  }
+  static setModalCbHolder(key, cbs) {
+    this.modalCbHolder.set(key, cbs);
+  }
+  static addCheatCode(code, callback) {
+    this.cheatCodesCbHolder.set(code.toLowerCase(), callback);
+  }
+  static addButtonToMainMenu(id, name, callback, iconFn) {
+    this.mainMenuButtons.push({
+      id,
+      name,
+      callback,
+      setIcon: iconFn,
+      RectTransform: undefined,
+      Button: undefined,
+    });
+  }
+  static get DiContainer() {
+    const scene = this._SceneManager.GetActiveScene();
+    return this._sceneRegistryInst.value.TryGetContainerForScene(scene);
+  }
+}
+export { PogoUtils };
+PogoUtils.userPromptsServiceInstance = undefined;
+PogoUtils.modalButton = undefined;
+PogoUtils.warningModalData = undefined;
+PogoUtils.dittoPlugin = undefined;
+PogoUtils.modalCbHolder = new Map();
+PogoUtils.cheatCodesCbHolder = new Map();
+PogoUtils.mainMenuButtons = [];
+PogoUtils.buttons = ButtonUtils_1.ButtonUtils;
+PogoUtils.toggles = ToggleUtils_1.ToggleUtils;
+PogoUtils.menu = MenuUtils_1.MenuUtils;
+PogoUtils._sceneRegistryInst = undefined;
+PogoUtils._SceneManager = undefined;
+PogoUtils._DarkTutorialModalData = undefined;
+
+ditto_1.default.onInitialize(() => {
+  PogoUtils.init();
+});

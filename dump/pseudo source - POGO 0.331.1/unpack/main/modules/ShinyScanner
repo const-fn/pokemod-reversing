@@ -1,0 +1,965 @@
+(function (setImmediate) {
+  (() => {
+    const __createBinding = Object.create
+      ? (o, m, k, k2 = k) => {
+          let desc = Object.getOwnPropertyDescriptor(m, k);
+
+          if (
+            !desc ||
+            ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)
+          ) {
+            desc = {
+              enumerable: true,
+              get() {
+                return m[k];
+              },
+            };
+          }
+
+          Object.defineProperty(o, k2, desc);
+        }
+      : (o, m, k, k2 = k) => {
+          o[k2] = m[k];
+        };
+
+    const __setModuleDefault = Object.create
+      ? (o, v) => {
+          Object.defineProperty(o, "default", { enumerable: true, value: v });
+        }
+      : (o, v) => {
+          o["default"] = v;
+        };
+
+    const __importStar = (mod) => {
+      if (mod && mod.__esModule) {
+        return mod;
+      }
+      const result = {};
+      if (mod != null) {
+        for (const k in mod) {
+          if (k != "default" && Object.prototype.hasOwnProperty.call(mod, k)) {
+            __createBinding(result, mod, k);
+          }
+        }
+      }
+      __setModuleDefault(result, mod);
+      return result;
+    };
+
+    const __importDefault = (mod) =>
+      mod && mod.__esModule ? mod : { default: mod };
+
+    const ditto_1 = __importDefault(require("@pkmd/ditto"));
+    const PokemonData_1 = __importStar(require("../utils/PokemonData"));
+    const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+    const UserData_1 = __importDefault(require("../utils/UserData"));
+    const events_1 = __importDefault(require("events"));
+    const ObjectInstance_1 = __importDefault(
+      require("../utils/ObjectInstance")
+    );
+    const queue_1 = __importDefault(require("queue"));
+    const UnityUtils_1 = __importDefault(require("../utils/UnityUtils"));
+    const PogoUtils_1 = require("../utils/PogoUtils");
+    const DESPAWN_CHECK_INTERVAL = 1800000;
+
+    const POTENTIAL_DITTO = [
+      43, 50, 88, 109, 111, 118, 209, 341, 396, 524, 535, 667,
+    ];
+
+    const ITEM_INCENSE_ORDINARY = 401;
+
+    const encounterQueue = (0, queue_1.default)({
+      autostart: true,
+      concurrency: 1,
+      timeout: 15000 /* 15e3 */,
+    });
+
+    const sentPokemons = new Map();
+    const scannedPokes = new Map();
+    const enqueuedPokes = new Map();
+    const onMap = new Map();
+    const emitters = new Map();
+    const poiPokemons = {};
+    function getEncounterKey(id) {
+      return `${UserData_1.default.username}_${id}`;
+    }
+    function getMapPokemonId(mapPokemon) {
+      let _mapPokemon$base;
+      if (
+        mapPokemon != null &&
+        mapPokemon.$has != null &&
+        mapPokemon.$has("get_EncounterId")
+      ) {
+        return `${UserData_1.default.username}_${mapPokemon.get_EncounterId()}`;
+      }
+      return mapPokemon != null &&
+        null != (_mapPokemon$base = mapPokemon.base) &&
+        _mapPokemon$base.$has("get_EncounterId")
+        ? `${UserData_1.default.username}_${mapPokemon.base.get_EncounterId()}`
+        : mapPokemon != null && mapPokemon.encounterId_
+        ? `${UserData_1.default.username}_${mapPokemon.encounterId_}`
+        : void error(color.red.bold("FIXME! Could not get encounterId"));
+    }
+    class ShinyScanner extends ModuleBase_1.default {
+      constructor() {
+        super();
+        this.playerName = "";
+        this.lastDespawnClearMs = Date.now();
+        this.xxsSize = 0.6;
+        this.xxlSize = 1.5;
+        this.gimmighoul = 5.5;
+        this.encounterInterval = null;
+        this.nativeLocationProviderInstance = undefined;
+        this.mapInstallerInstance = undefined;
+        this.skippedScansFar = 0;
+        this.skippedScansHundo = 0;
+        this.encounteredMons = 0;
+
+        encounterQueue.on("timeout", (next, job) => {
+          warn(color.red(`Encounter queue timeout on ${job.encounterId}`));
+          encounterQueue.splice(0);
+          next();
+        });
+
+        encounterQueue.on("error", (err, job) => {
+          error(
+            color.red(`Encounter queue error on ${job.encounterId}: ${err}`)
+          );
+
+          encounterQueue.splice(0);
+        });
+      }
+      check_bot_running() {
+        return (
+          PogoUtils_1.PogoUtils.toggles.isToggled("PokeFarmer") ||
+          PogoUtils_1.PogoUtils.toggles.isToggled("GruntFarmer")
+        );
+      }
+      getDistance(lat, lng) {
+        const playerLocation = this.deviceManager.get_CurrentLocation().data;
+        if (!playerLocation.LatitudeDeg || !playerLocation.LongitudeDeg) {
+          error(
+            color.red("Could not get player location from LocationProvider")
+          );
+
+          return Infinity;
+        }
+        const dLat = (playerLocation.LatitudeDeg - lat) * (Math.PI / 180);
+        const dLng = (playerLocation.LongitudeDeg - lng) * (Math.PI / 180);
+
+        const a =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos(lat * (Math.PI / 180)) *
+            Math.cos(lat * (Math.PI / 180)) *
+            Math.sin(dLng / 2) ** 2;
+
+        const distance =
+          6371001 * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+        return !distance || distance < 0
+          ? (error(color.red("Could not get distance")), Infinity)
+          : distance;
+      }
+      sendEncounterRequest(mapPokemon) {
+        this.encounteredMons += 1;
+        const encounterProto = ditto_1.default.use("EncounterProto").$new();
+        encounterProto.encounterId_ = mapPokemon.get_EncounterId();
+        encounterProto.spawnpointId_ = mapPokemon.get_SpawnPointId();
+        const playerLocation = this.deviceManager.get_CurrentLocation().data;
+        encounterProto.playerLatDegrees_ = playerLocation.LatitudeDeg;
+        encounterProto.playerLngDegrees_ = playerLocation.LongitudeDeg;
+
+        const actionRequest = this.rpcManager.CreateActionRequest(
+          102,
+          encounterProto,
+          this.telemetryUploader.CreateRpcCompleteCallback(encounterProto),
+          null
+        );
+
+        const emitter = new events_1.default();
+        emitters.set(actionRequest.$instance.toString(), emitter);
+        this.rpcManager.Send(actionRequest, 10000 /* 1e4 */, 1000 /* 1e3 */);
+        return emitter;
+      }
+      requestEncounterCallback(mapPokemon, wildPokemonProto) {
+        return (cb) => {
+          const encounterId = wildPokemonProto.encounterId_.toString();
+          const encounterKey = getEncounterKey(encounterId);
+          return this.shouldProcessPokemon(wildPokemonProto)
+            ? void this.sendEncounterRequest(mapPokemon).once(
+                "response",
+                (encounterOutProto) => {
+                  if (!this.shouldProcessPokemon(wildPokemonProto)) {
+                    return void cb();
+                  }
+                  info(
+                    color.yellow(
+                      `${getMapPokemonId(
+                        wildPokemonProto
+                      )}: encounter response received`
+                    )
+                  );
+                  const pokemonProto = encounterOutProto.pokemon_.pokemon_;
+                  const isShiny = pokemonProto.pokemonDisplay_.shiny_;
+
+                  if (isShiny) {
+                    mapPokemon.encounterProto = encounterOutProto;
+                  }
+
+                  const isDitto = this.isDitto(pokemonProto);
+
+                  this.updateHoloCharacter(
+                    mapPokemon,
+                    isShiny,
+                    isDitto,
+                    pokemonProto
+                  );
+
+                  if (isDitto) {
+                    pokemonProto.pokemonId_ = 132;
+                  }
+
+                  scannedPokes.set(encounterKey, {
+                    isShiny,
+                    isDitto,
+                    size: pokemonProto.size_,
+                    checkedAt: Date.now(),
+                  });
+
+                  enqueuedPokes.delete(encounterKey);
+
+                  this.sendToHal(
+                    pokemonProto,
+                    encounterKey,
+                    encounterId,
+                    wildPokemonProto.spawnPointId_,
+                    wildPokemonProto.latitude_,
+                    wildPokemonProto.longitude_,
+                    "wild"
+                  );
+
+                  setTimeout(cb, 1000 /* 1e3 */);
+                }
+              )
+            : void cb();
+        };
+      }
+      shouldProcessPokemon(wildPokemonProto) {
+        try {
+          if (
+            this.getDistance(
+              wildPokemonProto.latitude_,
+              wildPokemonProto.longitude_
+            ) > 100
+          ) {
+            this.skippedScansFar += 1;
+            return false;
+          }
+
+          if (
+            !!(
+              10000 /* 1e4 */ > Date.now() - this.lastHundoSeen &&
+              this.getDistance(
+                this.lastHundoLocation[0],
+                this.lastHundoLocation[1]
+              ) < 100
+            )
+          ) {
+            this.skippedScansHundo += 1;
+            return false;
+          }
+        } catch (e) {
+          return false;
+        }
+      }
+      init() {
+        super.init();
+        const self = this;
+        this.lastTp = Date.now();
+        this.totalTps = 0;
+
+        this.telemetryUploader = ditto_1.default
+          .use("Niantic.Platform.Analytics.Telemetry.TelemetryUploader")
+          .$new(null, null, null, []);
+
+        this.mapInstallerInstance = new ObjectInstance_1.default(
+          "Niantic.Holoholo.DependencyInjection.MapInstaller"
+        );
+
+        this.rpcManager = ditto_1.default
+          .use("DittoPluginInitializer")
+          .get_PluginInstance()
+          .get_RpcManager();
+
+        this.deviceManager = ditto_1.default
+          .use("DittoPluginInitializer")
+          .get_PluginInstance()
+          .get_DeviceManager();
+
+        const WildMapPokemon = ditto_1.default.use(
+          "Niantic.Holoholo.Map.WildMapPokemon"
+        );
+
+        ditto_1.default
+          .use("Niantic.Platform.Ditto.Rpc.ActionRequest")
+          .OnResponse.attach({
+            onEnter(args) {
+              const emitter = emitters.get(this.$instance.toString());
+              if (emitter) {
+                const codedInputStream = args[0].get_CodedInputStream();
+
+                const encounterOutProto = ditto_1.default
+                  .use("EncounterOutProto")
+                  .$new();
+
+                encounterOutProto.MergeFrom(codedInputStream);
+
+                if (!encounterOutProto.pokemon_) {
+                  return;
+                }
+
+                emitter.emit("response", encounterOutProto);
+              }
+            },
+          });
+
+        WildMapPokemon.VerifyProto.replace(function (
+          encounterOutProto,
+          destroyPokemon,
+          blacklistEncounter
+        ) {
+          const encounterOutProto_pokemon = encounterOutProto.pokemon_;
+          if (!encounterOutProto_pokemon) {
+            return this.VerifyProto(
+              encounterOutProto,
+              destroyPokemon,
+              blacklistEncounter
+            );
+          }
+          const encounterOutProto_pokemon_pokemon =
+            encounterOutProto_pokemon.pokemon_;
+          if (!encounterOutProto_pokemon_pokemon) {
+            return this.VerifyProto(
+              encounterOutProto,
+              destroyPokemon,
+              blacklistEncounter
+            );
+          }
+          if (encounterOutProto.status_ === 0) {
+            if (this.get_PokemonId() == 132) {
+              return true;
+            }
+            info(
+              color.red(
+                `${getMapPokemonId(
+                  encounterOutProto_pokemon
+                )}: Error status ENCOUNTER_ERROR`
+              )
+            );
+          }
+          return this.VerifyProto(
+            encounterOutProto,
+            destroyPokemon,
+            blacklistEncounter
+          );
+        });
+
+        ditto_1.default
+          .use("Niantic.Holoholo.Map.MapEntityService")
+          .UpdateWildPokemon.replace(function (cellId, wildPokemonProto) {
+            if (!wildPokemonProto || self.check_bot_running()) {
+              return;
+            }
+            if (
+              self.getDistance(
+                wildPokemonProto.latitude_,
+                wildPokemonProto.longitude_
+              ) > 100
+            ) {
+              return void info(
+                color.yellow.bold(
+                  `${getMapPokemonId(wildPokemonProto)}: pokemon too far away!`
+                )
+              );
+            }
+            const mapEntityCell = this.cells.get_Item(cellId);
+            if (!mapEntityCell) {
+              return;
+            }
+            let mapPokemon = mapEntityCell.GetMapPokemon(
+              wildPokemonProto.encounterId_
+            );
+            const encounterId = wildPokemonProto.encounterId_.toString();
+            const encounterKey = getEncounterKey(encounterId);
+            if (
+              !onMap.get(encounterKey) &&
+              (onMap.set(encounterKey, Date.now()),
+              (mapPokemon =
+                this.wildPokemonFactory.base.Create(wildPokemonProto)),
+              mapPokemon.set_VisibleOnMap(true),
+              mapEntityCell.AddMapPokemon(mapPokemon),
+              scannedPokes.has(encounterKey))
+            ) {
+              const { isShiny, isDitto, size } = scannedPokes.get(encounterKey);
+
+              const pokemonProto = mapPokemon.pokemonProto.pokemon_;
+              pokemonProto.size_ = size;
+              pokemonProto.pokemonDisplay_.shiny_ = isShiny;
+
+              info(
+                color.yellow(
+                  `${getMapPokemonId(mapPokemon)}: pokemon already scanned!`
+                )
+              );
+
+              self.updateHoloCharacter(
+                mapPokemon,
+                isShiny,
+                isDitto,
+                pokemonProto
+              );
+            }
+            if (
+              !scannedPokes.has(encounterKey) &&
+              !enqueuedPokes.has(encounterKey)
+            ) {
+              const job = self.requestEncounterCallback(
+                mapPokemon,
+                wildPokemonProto
+              );
+              job.Latitude = wildPokemonProto.latitude_;
+              job.Longitude = wildPokemonProto.longitude_;
+              enqueuedPokes.set(encounterKey, job);
+              encounterQueue.push(job);
+            }
+          });
+
+        ditto_1.default
+          .use("Niantic.Holoholo.Map.MapEntityCell")
+          .RemoveMapPokemon.replace(function (id) {
+            onMap.delete(getEncounterKey(id.toString()));
+            return this.RemoveMapPokemon(id);
+          });
+
+        WildMapPokemon.Initialize.replace(function (wildPokemonProto) {
+          if (!onMap.get(getEncounterKey(this.get_EncounterId().toString()))) {
+            this.Initialize(wildPokemonProto);
+          }
+        });
+
+        const PoiMapPokemon = ditto_1.default.use("MapPlacePokemon");
+        PoiMapPokemon.Initialize.attach({
+          onEnter(args) {
+            let _poiPokemons$key;
+            this.pokestop = args[1];
+            const key = getMapPokemonId(args[0]);
+
+            if (
+              null != (_poiPokemons$key = poiPokemons[key]) &&
+              _poiPokemons$key.shiny &&
+              !args[0].pokemonDisplay_.shiny_
+            ) {
+              info(`${key} should be shiny`);
+              args[0].pokemonDisplay_.shiny_ = true;
+            }
+          },
+          onLeave() {
+            const displayBroto = this.mapProto.pokemonDisplay_;
+            if (!(displayBroto.shiny_ || self.check_bot_running())) {
+              const key = getMapPokemonId(this);
+              if (!poiPokemons[key]) {
+                poiPokemons[key] = { shiny: false, pokestop: this.pokestop };
+                const pokemon = ditto_1.default.wrap(this.$instance);
+                try {
+                  info(
+                    color.yellow(
+                      `${getMapPokemonId(this)}: Sending POI encounter request`
+                    )
+                  );
+
+                  pokemon.SendEncounterRequest();
+                } catch (e) {}
+              }
+            }
+          },
+        });
+        const TroyDiskMapPokemon = ditto_1.default.use(
+          "Niantic.Holoholo.Map.TroyDiskMapPlacePokemon"
+        );
+        TroyDiskMapPokemon.VerifyEncounterResult.replace(function (
+          encounterOutProto,
+          destroyPokemon,
+          blacklistEncounter
+        ) {
+          const pokemonProto =
+            encounterOutProto == null || encounterOutProto.pokemon_;
+          if (pokemonProto == null) {
+            return this.VerifyEncounterResult(
+              encounterOutProto,
+              destroyPokemon,
+              blacklistEncounter
+            );
+          }
+          self.checkAndSendPoiPokemon(this, pokemonProto);
+
+          if (pokemonProto.size_ == 1) {
+            const holoCharacter = this.base.base.get_HoloCharacter();
+            holoCharacter.set_ScaleFactor(self.xxsSize);
+          } else if (pokemonProto.size_ == 5) {
+            const holoCharacter = this.base.base.get_HoloCharacter();
+            holoCharacter.set_ScaleFactor(self.xxlSize);
+          }
+
+          if (pokemonProto.pokemonId_ == 999) {
+            const holoCharacter = this.base.base.get_HoloCharacter();
+            holoCharacter.set_ScaleFactor(self.gimmighoul);
+          }
+          return true;
+        });
+        const PowerUpPoiMapPokemon = ditto_1.default.use(
+          "PowerUpMapPlacePokemon"
+        );
+        PowerUpPoiMapPokemon.VerifyEncounterResult.replace(function (
+          encounterOutProto,
+          destroyPokemon,
+          blacklistEncounter
+        ) {
+          const encounterOutProto_pokemon = encounterOutProto.pokemon_;
+          if (encounterOutProto_pokemon == null) {
+            return this.VerifyEncounterResult(
+              encounterOutProto,
+              destroyPokemon,
+              blacklistEncounter
+            );
+          }
+          self.checkAndSendPoiPokemon(this, encounterOutProto_pokemon);
+
+          if (encounterOutProto_pokemon.size_ == 1) {
+            const holoCharacter = this.base.base.get_HoloCharacter();
+            holoCharacter.set_ScaleFactor(self.xxsSize);
+          } else if (encounterOutProto_pokemon.size_ == 5) {
+            const holoCharacter = this.base.base.get_HoloCharacter();
+            holoCharacter.set_ScaleFactor(self.xxlSize);
+          }
+
+          if (encounterOutProto_pokemon.pokemonId_ == 999) {
+            const holoCharacter = this.base.base.get_HoloCharacter();
+            holoCharacter.set_ScaleFactor(self.gimmighoul);
+          }
+          return true;
+        });
+        const IncenseMapPokemon = ditto_1.default.use(
+          "Niantic.Holoholo.Map.IncenseMapPokemon"
+        );
+
+        IncenseMapPokemon.Initialize.attach({
+          onLeave() {
+            if (!self.check_bot_running() && !this.encounterProto) {
+              try {
+                info(
+                  color.yellow(
+                    `${getMapPokemonId(
+                      this
+                    )}: Sending Incense encounter request`
+                  )
+                );
+
+                this.SendEncounterRequest();
+              } catch (e) {}
+            }
+          },
+        });
+
+        IncenseMapPokemon.VerifyEncounterResult.replace(function (
+          encounterOutProto,
+          destroyPokemon,
+          blacklistEncounter
+        ) {
+          const encounterId = getMapPokemonId(this);
+          info(color.gray(`Checking pok�mon from Incense ${encounterId}`));
+          const encounterOutProto_pokemon = encounterOutProto.pokemon_;
+          if (encounterOutProto_pokemon == null) {
+            return this.VerifyEncounterResult(
+              encounterOutProto,
+              destroyPokemon,
+              blacklistEncounter
+            );
+          }
+          if (
+            self.isShinyPokemon(encounterOutProto_pokemon) ||
+            self.isShinyPokemon(this.get_Pokemon())
+          ) {
+            info(color.magenta.bold(`Pokemon ${encounterId} is shiny!!`));
+            const mapProto = this.mapProto;
+            const mapProto_pokemonDisplay = mapProto.pokemonDisplay_;
+            mapProto_pokemonDisplay.shiny_ = true;
+            this.mapProto.pokemonDisplay_.shiny_ = true;
+            this.Initialize(mapProto, ITEM_INCENSE_ORDINARY);
+          }
+          if (encounterOutProto_pokemon.size_ == 1) {
+            const holoCharacter = this.base.get_HoloCharacter();
+            holoCharacter.set_ScaleFactor(self.xxsSize);
+          } else if (encounterOutProto_pokemon.size_ == 5) {
+            const holoCharacter = this.base.get_HoloCharacter();
+            holoCharacter.set_ScaleFactor(self.xxlSize);
+          }
+          if (encounterOutProto_pokemon.pokemonId_ == 999) {
+            const holoCharacter = this.base.get_HoloCharacter();
+            holoCharacter.set_ScaleFactor(self.gimmighoul);
+          }
+          info(color.blue.bold(`encounterId: ${encounterId}`));
+          const location = this.base.get_Location();
+
+          self.sendToHal(
+            encounterOutProto_pokemon,
+            encounterId,
+            this.get_EncounterId(),
+            this.get_SpawnPointId(),
+            location.Latitude,
+            location.Longitude,
+            "incense"
+          );
+
+          return true;
+        });
+      }
+      isDitto(pokemonProto) {
+        if (!POTENTIAL_DITTO.includes(pokemonProto.pokemonId_)) {
+          return false;
+        }
+        const level = (0, PokemonData_1.getPokemonLevel)(
+          pokemonProto.cpMultiplier_
+        );
+        return (
+          !(
+            pokemonProto.pokemonDisplay_.weatherBoostedCondition_ ||
+            !(level > 30)
+          ) ||
+          (pokemonProto.pokemonDisplay_.weatherBoostedCondition_ &&
+            (pokemonProto.individualAttack_ < 4 ||
+              pokemonProto.individualDefense_ < 4 ||
+              pokemonProto.individualDefense_ < 4 ||
+              pokemonProto.individualStamina_ < 4 ||
+              pokemonProto.individualDefense_ < 4 ||
+              pokemonProto.individualStamina_ < 4 ||
+              pokemonProto.cpMultiplier_ < 0.3))
+        );
+      }
+      updateHoloCharacter(mapPokemon, isShiny, isDitto, pokemonProto) {
+        let holoCharacter;
+        try {
+          if (mapPokemon.base.holoCharacter.modelRequest == null) {
+            error(
+              color.red.bold(
+                `${mapPokemon
+                  .get_EncounterId()
+                  .toString()}: HoloCharacter modelRequest is null`
+              )
+            );
+
+            return false;
+          }
+          holoCharacter = mapPokemon.base.get_HoloCharacter();
+        } catch (e) {
+          error(
+            color.red.bold(
+              `${mapPokemon
+                .get_EncounterId()
+                .toString()}: HoloCharacter is null, can't update holo character`
+            )
+          );
+
+          return false;
+        }
+
+        if (isShiny) {
+          info(
+            color.green.bold(
+              `${mapPokemon.get_EncounterId().toString()}: Updating Shiny Model`
+            )
+          );
+
+          ditto_1.default
+            .use("Niantic.Platform.Ditto.Plugin.DittoPlugin")
+            .Update.probe(() => {
+              if (mapPokemon.base.holoCharacter.modelRequest == null) {
+                error(
+                  color.red.bold(
+                    `${mapPokemon
+                      .get_EncounterId()
+                      .toString()}: HoloCharacter modelRequest is null, can't set as shiny`
+                  )
+                );
+              } else {
+                mapPokemon.pokemonProto.pokemon_.pokemonDisplay_.shiny_ = true;
+                mapPokemon.Initialize(mapPokemon.pokemonProto);
+              }
+            });
+        }
+
+        if (isDitto) {
+          pokemonProto.pokemonId_ = 132;
+
+          info(
+            color.green.bold(
+              `${mapPokemon.get_EncounterId().toString()}: Updating Ditto Model`
+            )
+          );
+
+          ditto_1.default
+            .use("Niantic.Platform.Ditto.Plugin.DittoPlugin")
+            .Update.probe(() => {
+              if (mapPokemon.base.holoCharacter.modelRequest == null) {
+                error(
+                  color.red.bold(
+                    `${mapPokemon
+                      .get_EncounterId()
+                      .toString()}: HoloCharacter modelRequest is null, can't set ditto`
+                  )
+                );
+              } else {
+                mapPokemon.pokemonProto.pokemon_.pokemonId_ = 132;
+                mapPokemon.Initialize(mapPokemon.pokemonProto);
+              }
+            });
+        }
+
+        if (pokemonProto.size_ == 1) {
+          info(
+            color.green(
+              `${mapPokemon.get_EncounterId().toString()}: Updating size to xxs`
+            )
+          );
+
+          holoCharacter.set_ScaleFactor(this.xxsSize);
+        } else if (pokemonProto.size_ == 5) {
+          info(
+            color.green(
+              `${mapPokemon.get_EncounterId().toString()}: Updating size to xxl`
+            )
+          );
+
+          holoCharacter.set_ScaleFactor(this.xxlSize);
+        }
+
+        return true;
+      }
+      checkAndSendPoiPokemon(mapPokemon, pokemonProto) {
+        const self = this;
+        const encounterId = getMapPokemonId(mapPokemon);
+        info(color.gray(`Checking pok�mon from POI ${encounterId}`));
+
+        if (!pokemonProto) {
+          mapPokemon.get_Pokemon();
+        }
+
+        if (!pokemonProto) {
+          return void error(`[${encounterId}] has no PokemonProto.`);
+        }
+
+        if (self.isShinyPokemon(pokemonProto)) {
+          info(color.magenta.bold(`Pokemon ${encounterId} is shiny!!`));
+          poiPokemons[encounterId].shiny = true;
+          const holoCharacter = mapPokemon.base.base.get_HoloCharacter();
+          if (!holoCharacter) {
+            return void info(
+              color.red(`[${encounterId}] has no HoloCharacter`)
+            );
+          }
+          const pokemonInstantiatedAction = UnityUtils_1.default.makeAction(
+            `${encounterId}_${Date.now()}`,
+            "System.Action",
+            () => {
+              holoCharacter.remove_PokemonInstantiated(
+                pokemonInstantiatedAction
+              );
+
+              holoCharacter.LoadPokemon(
+                pokemonProto.pokemonId_,
+                pokemonProto.pokemonDisplay_,
+                false,
+                0,
+                pokemonProto.size_,
+                false
+              );
+            },
+            true
+          );
+          holoCharacter.add_PokemonInstantiated(pokemonInstantiatedAction);
+        }
+        let location = mapPokemon.base.base.get_Location();
+        if (!location) {
+          let _poiPokemons$encounte;
+          location =
+            null == (_poiPokemons$encounte = poiPokemons[encounterId]) ||
+            _poiPokemons$encounte.pokestop;
+        }
+
+        if (!location) {
+          ({
+            Latitude: 0,
+            Longitude: 0,
+          });
+        }
+
+        let encounterType = "";
+        switch (mapPokemon.$className) {
+          case "PowerUpMapPlacePokemon": {
+            encounterType = "poweruppoi";
+            break;
+          }
+          default: {
+            encounterType = "lure";
+          }
+        }
+        self.sendToHal(
+          pokemonProto,
+          encounterId,
+          mapPokemon.base.get_EncounterId(),
+          mapPokemon.base.get_SpawnPointId(),
+          location.Latitude,
+          location.Longitude,
+          encounterType
+        );
+      }
+      sendToHal(
+        pokemonProto,
+        encounterKey,
+        encounterId,
+        spawnPointId,
+        lat,
+        lng,
+        encounterType
+      ) {
+        if (sentPokemons.get(encounterKey)) {
+          return;
+        }
+        const pokemonData = new PokemonData_1.default(
+          pokemonProto,
+          encounterId,
+          spawnPointId,
+          { Latitude: lat, Longitude: lng },
+          encounterType
+        );
+
+        info(
+          color.blue.bold(
+            `${encounterKey.padEnd(20)}: sent Pokemon. SkippedFar: ${
+              this.skippedScansFar
+            } SkippedHundo: ${this.skippedScansHundo} Encountered: ${
+              this.encounteredMons
+            } (${(
+              100 *
+              ((this.skippedScansFar + this.skippedScansHundo) /
+                (this.skippedScansFar +
+                  this.skippedScansHundo +
+                  this.encounteredMons))
+            ).toFixed(2)}%)`
+          )
+        );
+
+        Java.send({ script: "overworld_scanner", content: pokemonData });
+        sentPokemons.set(encounterKey, Date.now());
+        this.clearDespawnedPokes();
+
+        if (pokemonData.iv != 100) {
+          return;
+        }
+
+        this.lastHundoSeen = Date.now();
+        this.lastHundoLocation = [lat, lng];
+        const data = {
+          type: "log",
+          date: new Date().toISOString(),
+          source: "Pokemon",
+          reference_id: pokemonData.encounterId,
+          tags: [pokemonData.spawnPointId],
+          geo: `${pokemonData.latitude}, ${pokemonData.longitude}`,
+          message:
+            `${pokemonData.pokemonId} CP${pokemonData.cp} IV${pokemonData.iv} ${pokemonData.attack}/${pokemonData.defense}/${pokemonData.hp} L${pokemonData.level} ` +
+            `${
+              pokemonData.gender == "male"
+                ? "M"
+                : pokemonData.gender == "female"
+                ? "F"
+                : "X"
+            } ${pokemonData.latitude.toFixed(
+              6
+            )},${pokemonData.longitude.toFixed(6)} ` +
+            `F${pokemonData.form ? pokemonData.form : 0} C${
+              pokemonData.costume ? pokemonData.costume : 0
+            }`,
+          data: {
+            Pokemon: {
+              ID: pokemonData.pokemonId,
+              Name: pokemonData.name,
+              Type: encounterType,
+              Form: pokemonData.form,
+              Costume: pokemonData.costume,
+              Gender: pokemonData.gender,
+              Shiny: pokemonData.shiny ? "True" : "False",
+              Height: pokemonData.height,
+              Weight: pokemonData.weight,
+            },
+            Location: {
+              Latitude: pokemonData.latitude,
+              Longitude: pokemonData.longitude,
+            },
+            Stats: {
+              CP: pokemonData.cp,
+              Level: pokemonData.level,
+              IV: pokemonData.iv,
+              Attack: pokemonData.attack,
+              Defense: pokemonData.defense,
+              HP: pokemonData.hp,
+            },
+            Misc: {
+              EncounterId: pokemonData.encounterId,
+              SpawnPointId: pokemonData.spawnPointId,
+            },
+          },
+        };
+        setImmediate(() => {
+          ditto_1.default.Telemetry._sendTelemetry(data);
+        });
+      }
+      clearDespawnedPokes() {
+        const timeDelta = Date.now() - this.lastDespawnClearMs;
+        if (timeDelta < DESPAWN_CHECK_INTERVAL) {
+          return;
+        }
+        const deltaToDeleteAt = 6 * DESPAWN_CHECK_INTERVAL;
+
+        sentPokemons.forEach((v, k) => {
+          if (Date.now() - v > deltaToDeleteAt) {
+            sentPokemons.delete(k);
+          }
+        });
+
+        scannedPokes.forEach((v, k) => {
+          if (Date.now() - (v == null || v.checkedAt) > deltaToDeleteAt) {
+            scannedPokes.delete(k);
+          }
+        });
+
+        this.lastDespawnClearMs = Date.now();
+      }
+      isShinyPokemon(pokemonProto) {
+        try {
+          let _pokemonProto$pokemon;
+          let _pokemonProto$pokemon2;
+          return (
+            null !=
+              (_pokemonProto$pokemon =
+                pokemonProto == null ||
+                null ==
+                  (_pokemonProto$pokemon2 = pokemonProto.pokemonDisplay_) ||
+                _pokemonProto$pokemon2.shiny_) && _pokemonProto$pokemon
+          );
+        } catch (e) {
+          return false;
+        }
+      }
+    }
+    exports.default = ShinyScanner;
+  }).call(this);
+}).call(this, require("timers").setImmediate);

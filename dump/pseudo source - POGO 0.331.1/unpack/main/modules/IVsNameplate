@@ -1,0 +1,235 @@
+import { rainbowText } from "../utils/TextEffects";
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const PokemonData_1 = __importDefault(require("../utils/PokemonData"));
+const PUMPKABOO_SMALL = 2641;
+const PUMPKABOO_AVERAGE = 2642;
+const PUMPKABOO_LARGE = 2643;
+const PUMPKABOO_SUPER = 2644;
+const GOURGEIST_SMALL = 2645;
+const GOURGEIST_AVERAGE = 2646;
+const GOURGEIST_LARGE = 2647;
+const GOURGEIST_SUPER = 2648;
+const PUMPKABOO_FAMILY = [710, 711];
+class IVsNameplate extends ModuleBase_1.default {
+  constructor() {
+    super();
+    this.currentPokemonProto = undefined;
+    this.isWild = false;
+    this.spawn_point = undefined;
+    this.incenseORdisk = [];
+  }
+  sp(instances = 1, fontSize = 20) {
+    return `<size=${fontSize}>${" ".repeat(instances)}</size>`;
+  }
+  getGenderIcon(gender) {
+    if (gender == "male") {
+      return `<color=#81C3EC><size=30><b>${String.fromCodePoint(
+        9794
+      )}</b></size></color>`;
+    }
+    return gender == "female"
+      ? `<color=#F18CDD><size=30><b>${String.fromCodePoint(
+          9792
+        )}</b></size></color>`
+      : "";
+  }
+  getName(name, id, weightStdDev, weight) {
+    return id == 129 && weightStdDev >= 2.5
+      ? `<size=36>${rainbowText(name)}</size>`
+      : id == 19 && weight <= 2.41625
+      ? `<size=36>${rainbowText(name)}</size>`
+      : `<size=36>${name}</size>`;
+  }
+  getLevel(level) {
+    return `<size=20><b>LVL</b></size><size=36>${level}</size>`;
+  }
+  getIV(iv, ivPercentage) {
+    let color = "#FFFFFF";
+
+    if (iv == 100) {
+      color = "#FF8484";
+    }
+
+    if (iv == 0) {
+      color = "#76AAFF";
+    }
+
+    return `<size=20><b>IV</b></size><size=36><color=${color}>${ivPercentage}</color></size>`;
+  }
+  getIVSplit(atk, def, hp) {
+    return `<size=32>${atk}/${def}/${hp}</size>`;
+  }
+  getCPValue(cp) {
+    return `<size=38>${cp}</size>`;
+  }
+  getXLXS(height, weight) {
+    let xlxsString = "";
+
+    xlxsString +=
+      height > 2
+        ? "<size=20><color=#F2ECC4>H</color></size><size=28>XL</size>"
+        : -2 > height
+        ? "<size=20><color=#F2ECC4>H</color></size><size=28>XS</size>"
+        : "";
+
+    xlxsString +=
+      weight > 2
+        ? "<size=20><color=#F2ECC4>W</color></size><size=28>XL</size>"
+        : -2 > weight
+        ? "<size=20><color=#F2ECC4>W</color></size><size=28>XS</size>"
+        : "";
+
+    return xlxsString;
+  }
+  getPumpkabooSize(form_) {
+    let xlxsString = "";
+
+    form_ === PUMPKABOO_SMALL || form_ === GOURGEIST_SMALL
+      ? (xlxsString =
+          "<size=20><color=#F2ECC4>H</color></size><size=28>XS</size>")
+      : form_ === PUMPKABOO_AVERAGE || form_ === GOURGEIST_AVERAGE
+      ? (xlxsString =
+          "<size=20><color=#F2ECC4>H</color></size><size=28>M</size>")
+      : form_ === PUMPKABOO_LARGE || form_ === GOURGEIST_LARGE
+      ? (xlxsString =
+          "<size=20><color=#F2ECC4>H</color></size><size=28>XL</size>")
+      : form_ === PUMPKABOO_SUPER || form_ === GOURGEIST_SUPER
+      ? (xlxsString =
+          "<size=20><color=#F2ECC4>H</color></size><size=28>XXL</size>")
+      : undefined;
+
+    return xlxsString;
+  }
+  dittoNameplate(pokemon) {
+    const name = this.getName(
+      pokemon.name,
+      pokemon.pokemonId,
+      pokemon.weightStdDev,
+      pokemon.weight
+    );
+
+    const genderIcon = this.getGenderIcon("genderless");
+    const cpValue = this.getCPValue("???");
+    if (
+      !this.currentPokemonProto.pokemonDisplay_.weatherBoostedCondition_ &&
+      pokemon.level > 30
+    ) {
+      const level = this.getLevel(" ??");
+      const ivPercent = this.getIV("???", " ???%");
+      const ivSplit = this.getIVSplit("??", "??", "??");
+
+      const newNameText = `${
+        genderIcon + this.sp(1) + name + this.sp(2, 24) + level
+      }\n${ivPercent}${this.sp(2, 24)}${ivSplit}`;
+
+      const newCpText = `\n${cpValue}\n${this.sp(1, 30)}${this.sp(1, 30)}`;
+      return { newNameText, newCpText };
+    } else {
+      const level = this.getLevel(pokemon.level);
+      const ivPercent = this.getIV(pokemon.iv, pokemon.ivString);
+      const ivSplit = this.getIVSplit(
+        pokemon.attack,
+        pokemon.defense,
+        pokemon.hp
+      );
+
+      const newNameText = `${
+        genderIcon + this.sp(1) + name + this.sp(2, 24) + level
+      }\n${ivPercent}${this.sp(2, 24)}${ivSplit}`;
+
+      const newCpText = `\n${cpValue}\n${this.sp(1, 30)}${this.sp(1, 30)}`;
+      return { newNameText, newCpText };
+    }
+  }
+  pokemonNameplate(pokemon, form = undefined) {
+    const name = this.getName(
+      pokemon.name,
+      pokemon.pokemonId,
+      pokemon.weightStdDev,
+      pokemon.weight
+    );
+
+    const level = this.getLevel(pokemon.level);
+    const ivPercent = this.getIV(pokemon.iv, pokemon.ivString);
+    const ivSplit = this.getIVSplit(
+      pokemon.attack,
+      pokemon.defense,
+      pokemon.hp
+    );
+    const cpValue = this.getCPValue(pokemon.cp);
+
+    const xlxsString = form
+      ? this.getPumpkabooSize(form)
+      : this.getXLXS(pokemon.heightStdDev, pokemon.weightStdDev);
+
+    const genderIcon = this.getGenderIcon(pokemon.gender);
+
+    const newNameText = `${
+      genderIcon + this.sp(1) + name + this.sp(2, 24) + level
+    }\n${ivPercent}${this.sp(2, 24)}${ivSplit}`;
+
+    const newCpText = `\n${cpValue}\n${this.sp(1, 30)}${xlxsString}${this.sp(
+      1,
+      30
+    )}`;
+
+    return { newNameText, newCpText };
+  }
+  init() {
+    super.init();
+    const self = this;
+    this.spawn_point = 0;
+    this.incenseORdisk = [1, 2];
+    const EncounterState = ditto_1.default.use(
+      "Niantic.Holoholo.Encounter.EncounterState"
+    );
+    EncounterState.ApproachComplete.attach({
+      onEnter() {
+        const mapPokemon = this.get_MapPokemon();
+        const encounterType = this.get_EncounterType();
+        self.isWild = encounterType == self.spawn_point;
+
+        self.currentPokemonProto =
+          encounterType == self.spawn_point &&
+          mapPokemon.$className.includes("WildMapPokemon")
+            ? mapPokemon.encounterProto.pokemon_.pokemon_
+            : self.incenseORdisk.includes(encounterType)
+            ? mapPokemon.encounterProto.pokemon_
+            : mapPokemon.$className.includes("StationMapPokemon")
+            ? mapPokemon._encounterOutProto.pokemon_
+            : mapPokemon.get_Pokemon();
+      },
+    });
+    const EncounterNameplate = ditto_1.default.use(
+      "Niantic.Holoholo.Encounter.EncounterNameplate"
+    );
+    EncounterNameplate.SetPokemonUI.attach({
+      onLeave() {
+        const nameTextObj = this.nameText;
+        const cpTextObj = this.cpText;
+        const pokemon = new PokemonData_1.default(self.currentPokemonProto);
+        const isWildDitto = pokemon.pokemonId == 132 && self.isWild;
+
+        const form = PUMPKABOO_FAMILY.includes(pokemon.pokemonId)
+          ? self.currentPokemonProto.pokemonDisplay_.form_
+          : undefined;
+
+        const { newNameText, newCpText } = isWildDitto
+          ? self.dittoNameplate(pokemon)
+          : self.pokemonNameplate(pokemon, form);
+
+        nameTextObj.set_supportRichText(true);
+        nameTextObj.set_lineSpacing(0.9);
+        nameTextObj.set_text(newNameText);
+        cpTextObj.set_supportRichText(true);
+        cpTextObj.set_lineSpacing(0.57);
+        cpTextObj.set_alignment(1);
+        cpTextObj.set_text(newCpText);
+      },
+    });
+  }
+}
+export default IVsNameplate;

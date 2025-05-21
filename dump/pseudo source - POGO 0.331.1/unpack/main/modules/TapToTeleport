@@ -1,0 +1,56 @@
+const __importDefault = (mod) =>
+  mod && mod.__esModule ? mod : { default: mod };
+const ditto_1 = __importDefault(require("@pkmd/ditto"));
+const SharedUtils_1 = __importDefault(require("../../bot/Utils/SharedUtils"));
+const ModuleBase_1 = __importDefault(require("../utils/ModuleBase"));
+const ObjectInstance_1 = __importDefault(require("../utils/ObjectInstance"));
+const worldMapRendererInstance = new ObjectInstance_1.default(
+  "WorldMapRenderer"
+);
+class TapToTeleport extends ModuleBase_1.default {
+  constructor() {
+    super();
+    this.previousTapTime;
+
+    ditto_1.default.use("WorldMapRenderer").$ctor.attach({
+      onLeave(retval) {
+        worldMapRendererInstance.value = retval;
+      },
+    });
+  }
+  init() {
+    super.init();
+    const self = this;
+    const LatLng = ditto_1.default.use("Niantic.LatLng");
+
+    const GroundTapHandler = ditto_1.default.use(
+      "Niantic.Holoholo.Map.GroundTapHandler"
+    );
+
+    GroundTapHandler.OnTap.attach({
+      onEnter(args) {
+        const latlng = LatLng.$new(0, 0);
+
+        worldMapRendererInstance.value.GetGroundLocation(
+          args[0].startPosition,
+          latlng
+        );
+
+        return latlng.Latitude && latlng.Longitude
+          ? typeof SharedUtils_1.default.handleLocationChange == "function"
+            ? void (500 > Date.now() - self.previousTapTime
+                ? SharedUtils_1.default.handleLocationChange(
+                    latlng.Latitude,
+                    latlng.Longitude
+                  )
+                : (self.previousTapTime = Date.now()))
+            : void Java.send({
+                script: "teleport",
+                content: { lat: latlng.Latitude, lng: latlng.Longitude },
+              })
+          : undefined;
+      },
+    });
+  }
+}
+export default TapToTeleport;
